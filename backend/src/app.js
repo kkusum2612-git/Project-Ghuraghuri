@@ -5,6 +5,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware.js';
 import healthRouter from './routes/health.routes.js';
+import hotelRouter from './routes/hotel.routes.js';
+import bookingRouter from './routes/booking.routes.js';
 
 const app = express();
 
@@ -25,6 +27,8 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/v1/health', healthRouter);
+app.use('/api/v1/hotels', hotelRouter);
+app.use('/api/v1/bookings', bookingRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
