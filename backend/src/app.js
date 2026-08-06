@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import express from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -16,6 +17,14 @@ app.use(
     credentials: true,
   })
 );
+
+// Read cookies sent by the browser and make them available through
+// req.cookies inside controllers and middleware.
+//
+// We do not give cookie-parser a separate signing secret because our
+// authentication cookie contains a JWT that is already cryptographically
+// signed and verified by token.service.js.
+app.use(cookieParser());
 
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
