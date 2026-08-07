@@ -8,6 +8,7 @@ import MainLayout from '../layouts/MainLayout';
 import HomePage from '../pages/HomePage';
 import LoginPage from '../pages/LoginPage';
 import NotFoundPage from '../pages/NotFoundPage';
+import RegisterPage from '../pages/RegisterPage';
 
 /**
  * Defines the frontend routes available in the Ghuraghuri application.
@@ -34,6 +35,12 @@ function AppRoutes() {
           <Route
             path="/login"
             element={<LoginPage />}
+          />
+
+          {/* Public authentication page for creating a new account. */}
+          <Route
+            path="/register"
+            element={<RegisterPage />}
           />
 
           {/* Catch every unknown route and show the 404 page. */}
