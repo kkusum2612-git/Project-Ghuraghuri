@@ -1,0 +1,189 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.trip-map-demo-page {
+  min-height: 100vh;
+  padding: 32px;
+  background: #f4f7fb;
+  font-family:
+    Inter, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  color: #172033;
+}
+
+.trip-map-demo-card {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid #dde4ee;
+  border-radius: 18px;
+  box-shadow: 0 12px 32px rgba(22, 32, 51, 0.08);
+}
+
+.trip-map-demo-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.trip-map-demo-header h1 {
+  margin: 4px 0 8px;
+  font-size: 28px;
+}
+
+.trip-map-demo-header p {
+  margin: 0;
+  color: #5d6878;
+}
+
+.trip-map-demo-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.trip-route-summary {
+  min-width: 180px;
+  padding: 14px 18px;
+  background: #eef7f1;
+  border-radius: 12px;
+  text-align: right;
+}
+
+.trip-route-summary strong,
+.trip-route-summary span {
+  display: block;
+}
+
+.trip-route-summary strong {
+  font-size: 22px;
+}
+
+.trip-route-summary span {
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+.trip-map-demo-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 20px;
+}
+
+.trip-map-canvas {
+  width: 100%;
+  height: 520px;
+  border: 1px solid #d7dee8;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.trip-stop-panel {
+  padding: 18px;
+  background: #f8fafc;
+  border: 1px solid #dde4ee;
+  border-radius: 14px;
+}
+
+.trip-stop-panel h2 {
+  margin: 0 0 16px;
+  font-size: 20px;
+}
+
+.trip-stop-panel ol {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trip-stop-panel li {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid #e0e6ee;
+  border-radius: 10px;
+}
+
+.trip-stop-panel li p {
+  margin: 5px 0;
+  color: #667184;
+  font-size: 14px;
+}
+
+.trip-stop-panel small {
+  color: #667184;
+}
+
+.trip-stop-number {
+  display: grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: #16855b;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.trip-stop-help {
+  margin: 18px 0 0;
+  color: #667184;
+  font-size: 13px;
+}
+
+.ghuraghuri-numbered-icon {
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+}
+
+.ghuraghuri-numbered-icon span {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: #16855b;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.leaflet-popup-content p {
+  margin: 6px 0 0;
+}
+
+@media (max-width: 850px) {
+  .trip-map-demo-header {
+    flex-direction: column;
+  }
+
+  .trip-route-summary {
+    width: 100%;
+    text-align: left;
+  }
+
+  .trip-map-demo-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .trip-map-canvas {
+    height: 420px;
+  }
+}
