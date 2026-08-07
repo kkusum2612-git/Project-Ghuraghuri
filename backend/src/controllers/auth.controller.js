@@ -3,12 +3,14 @@ import {
   setAuthCookie,
 } from '../services/auth-cookie.service.js';
 import {
+  comparePassword,  
   hashPassword,
 } from '../services/password.service.js';
 import {
   createAccessToken,
 } from '../services/token.service.js';
 import {
+  validateLoginInput,  
   validateRegistrationInput,
 } from '../validators/auth.validator.js';
 
@@ -163,6 +165,136 @@ async function registerUser(req, res, next) {
   }
 }
 
+/**
+ * Logs an existing user into the application.
+ *
+ * Login workflow:
+ *
+ * 1. Validate the submitted email and password.
+ * 2. Find the user by normalized email address.
+ * 3. Load the normally hidden password hash.
+ * 4. Compare the submitted password with the stored bcrypt hash.
+ * 5. Confirm that the account is active.
+ * 6. Create a JWT.
+ * 7. Store the JWT in an HTTP-only cookie.
+ * 8. Return safe user information.
+ *
+ * @param {object} req
+ * The Express request object containing req.body.
+ *
+ * @param {object} res
+ * The Express response object.
+ *
+ * @param {Function} next
+ * Sends unexpected errors to the centralized error middleware.
+ */
+async function loginUser(req, res, next) {
+  try {
+    const validationResult = validateLoginInput(req.body);
+
+    if (!validationResult.isValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please correct the login information.',
+        errors: validationResult.errors,
+      });
+    }
+
+    const {
+      email,
+      password,
+    } = validationResult.data;
+
+    // passwordHash uses "select: false" in the User model.
+    //
+    // The explicit "+passwordHash" tells Mongoose to include it only for this
+    // security-sensitive password comparison.
+    const user = await User.findOne({
+      email,
+    }).select('+passwordHash');
+
+    // Use the same response for:
+    // - an email that does not exist;
+    // - an incorrect password.
+    //
+    // This prevents the login API from revealing which email addresses are
+    // registered in the system.
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email address or password.',
+        errors: [
+          {
+            field: 'credentials',
+            message: 'The provided login credentials are incorrect.',
+          },
+        ],
+      });
+    }
+
+    const passwordMatches = await comparePassword(
+      password,
+      user.passwordHash
+    );
+
+    if (!passwordMatches) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email address or password.',
+        errors: [
+          {
+            field: 'credentials',
+            message: 'The provided login credentials are incorrect.',
+          },
+        ],
+      });
+    }
+
+    // Suspended or disabled users must not receive a new authentication token.
+    //
+    // We check this only after the password has been verified. Therefore, this
+    // message does not reveal account status to someone who does not know the
+    // correct password.
+    if (user.accountStatus !== 'active') {
+      return res.status(403).json({
+        success: false,
+        message: 'This account is not currently allowed to sign in.',
+        errors: [
+          {
+            field: 'account',
+            message:
+              user.accountStatus === 'suspended'
+                ? 'This account has been suspended.'
+                : 'This account has been disabled.',
+          },
+        ],
+      });
+    }
+
+    // Hotel and guide users with pending approval may still log in.
+    //
+    // Later authorization middleware will prevent them from using protected
+    // vendor or guide operations until an administrator approves them.
+    const accessToken = createAccessToken(user._id);
+
+    setAuthCookie(res, accessToken);
+
+    // The User model's toJSON transformation removes passwordHash and __v.
+    const safeUser = user.toJSON();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Logged in successfully.',
+      data: {
+        user: safeUser,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export {
+  loginUser,  
   registerUser,
 };

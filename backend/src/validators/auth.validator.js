@@ -233,4 +233,97 @@ function validateRegistrationInput(input) {
   };
 }
 
-export { validateRegistrationInput };
+/**
+ * Validates the information submitted through the login form.
+ *
+ * Login validation is intentionally simpler than registration validation.
+ *
+ * During registration, we check password strength because the user is
+ * creating a new password.
+ *
+ * During login, we only check that a password was supplied. We should not
+ * reject an existing password merely because password requirements changed
+ * after the account was created.
+ *
+ * @param {unknown} input
+ * The request body submitted to the login endpoint.
+ *
+ * @returns {{
+ *   isValid: boolean,
+ *   errors: Array<{field: string, message: string}>,
+ *   data: {
+ *     email: string,
+ *     password: string
+ *   }
+ * }}
+ */
+function validateLoginInput(input) {
+  // Protect the validator from null, arrays, strings, and other invalid input.
+  const source =
+    input &&
+    typeof input === 'object' &&
+    !Array.isArray(input)
+      ? input
+      : {};
+
+  const errors = [];
+
+  // Email addresses are stored in lowercase in MongoDB.
+  // Normalizing here ensures that USER@EXAMPLE.COM can still log in to the
+  // account stored as user@example.com.
+  const email =
+    typeof source.email === 'string'
+      ? source.email.trim().toLowerCase()
+      : '';
+
+  // Do not trim the password.
+  //
+  // Spaces may legitimately be part of a password, so changing the password
+  // before comparison could prevent a valid user from logging in.
+  const password =
+    typeof source.password === 'string'
+      ? source.password
+      : '';
+
+  if (!email) {
+    addValidationError(
+      errors,
+      'email',
+      'Email address is required.'
+    );
+  } else if (email.length > 120) {
+    addValidationError(
+      errors,
+      'email',
+      'Email address cannot contain more than 120 characters.'
+    );
+  } else if (!EMAIL_PATTERN.test(email)) {
+    addValidationError(
+      errors,
+      'email',
+      'Please enter a valid email address.'
+    );
+  }
+
+  if (!password) {
+    addValidationError(
+      errors,
+      'password',
+      'Password is required.'
+    );
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    data: {
+      email,
+      password,
+    },
+  };
+}
+
+export {
+  validateLoginInput,
+  validateRegistrationInput,
+};
