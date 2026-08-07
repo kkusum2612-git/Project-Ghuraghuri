@@ -1,6 +1,7 @@
 import express from 'express';
 
 import {
+  loginUser,  
   registerUser,
 } from '../controllers/auth.controller.js';
 
@@ -27,5 +28,14 @@ const authRouter = express.Router();
  * 7. Return safe user information.
  */
 authRouter.post('/register', registerUser);
+
+/**
+ * POST /api/v1/auth/login
+ *
+ * Verifies an existing user's email and password.
+ * On success, the controller creates a JWT and stores it in an
+ * HTTP-only authentication cookie.
+ */
+authRouter.post('/login', loginUser);
 
 export default authRouter;
