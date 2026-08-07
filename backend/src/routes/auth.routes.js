@@ -1,9 +1,15 @@
 import express from 'express';
 
 import {
-  loginUser,  
+  getCurrentUser,
+  loginUser,
+  logoutUser,
   registerUser,
 } from '../controllers/auth.controller.js';
+
+import {
+  authenticateUser,
+} from '../middleware/auth.middleware.js';
 
 // Express Router lets us keep authentication endpoints in a separate file.
 //
@@ -37,5 +43,28 @@ authRouter.post('/register', registerUser);
  * HTTP-only authentication cookie.
  */
 authRouter.post('/login', loginUser);
+
+/**
+ * GET /api/v1/auth/me
+ *
+ * Returns the latest information for the currently logged-in user.
+ *
+ * authenticateUser must succeed before getCurrentUser is allowed to run.
+ */
+authRouter.get(
+  '/me',
+  authenticateUser,
+  getCurrentUser
+);
+
+/**
+ * POST /api/v1/auth/logout
+ *
+ * Removes the authentication cookie.
+ *
+ * This route does not require authenticateUser because users should still be
+ * able to clear an expired or invalid authentication cookie.
+ */
+authRouter.post('/logout', logoutUser);
 
 export default authRouter;

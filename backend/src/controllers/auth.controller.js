@@ -1,5 +1,6 @@
 import User from '../models/User.js';
 import {
+  clearAuthCookie,  
   setAuthCookie,
 } from '../services/auth-cookie.service.js';
 import {
@@ -294,7 +295,72 @@ async function loginUser(req, res, next) {
   }
 }
 
+/**
+ * Returns the currently authenticated user's latest account information.
+ *
+ * The authenticateUser middleware runs before this controller. That middleware:
+ *
+ * 1. Reads and verifies the JWT cookie.
+ * 2. Loads the latest user record from MongoDB.
+ * 3. Confirms that the account is active.
+ * 4. Places the user document in req.user.
+ *
+ * @param {object} req
+ * The Express request object containing req.user.
+ *
+ * @param {object} res
+ * The Express response object.
+ *
+ * @returns {object}
+ * An HTTP 200 response containing safe user information.
+ */
+function getCurrentUser(req, res) {
+  // Convert the Mongoose document into a JSON-safe object.
+  //
+  // The User model's toJSON transformation removes passwordHash and __v.
+  const safeUser = req.user.toJSON();
+
+  return res.status(200).json({
+    success: true,
+    message: 'Authenticated user retrieved successfully.',
+    data: {
+      user: safeUser,
+    },
+  });
+}
+
+/**
+ * Logs the browser out by removing its authentication cookie.
+ *
+ * JWT logout does not delete or change the user account. It removes the
+ * browser's stored token so later protected requests are unauthenticated.
+ *
+ * This operation is intentionally idempotent. That means it succeeds whether
+ * the cookie currently exists or has already been removed.
+ *
+ * @param {object} req
+ * The Express request object. It is not currently needed, but remains part of
+ * the normal Express controller signature.
+ *
+ * @param {object} res
+ * The Express response object used to clear the cookie and return JSON.
+ *
+ * @returns {object}
+ * An HTTP 200 logout response.
+ */
+function logoutUser(_req, res) {
+  clearAuthCookie(res);
+
+  return res.status(200).json({
+    success: true,
+    message: 'Logged out successfully.',
+    data: {},
+  });
+}
+
 export {
-  loginUser,  
+  getCurrentUser,  
+  loginUser,
+  logoutUser,  
   registerUser,
 };
