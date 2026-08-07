@@ -177,6 +177,63 @@ async function authenticateUser(req, res, next) {
   }
 }
 
+/**
+ * Creates middleware that restricts a route to specific user roles.
+ *
+ * This middleware must run after authenticateUser because it depends on
+ * req.user being populated from the latest MongoDB user document.
+ *
+ * Example:
+ *
+ * authorizeRoles('traveler')
+ *
+ * allows only travelers.
+ *
+ * authorizeRoles('hotel', 'admin')
+ *
+ * allows either a hotel account or an administrator.
+ *
+ * Frontend route hiding is not authorization. Sensitive API routes must use
+ * this middleware, or another suitable backend permission check, so users
+ * cannot bypass restrictions by calling an API directly.
+ *
+ * @param {...string} allowedRoles
+ * One or more roles that are permitted to continue to the controller.
+ *
+ * @returns {Function}
+ * Express middleware that checks the authenticated user's role.
+ */
+function authorizeRoles(...allowedRoles) {
+  return function roleAuthorizationMiddleware(req, res, next) {
+    // authorizeRoles is designed to run after authenticateUser.
+    //
+    // This fallback protects the route from accidentally continuing when the
+    // middleware chain was configured incorrectly and req.user is unavailable.
+    if (!req.user) {
+      return sendUnauthorizedResponse(res);
+    }
+
+    // A user whose current role is not in the route's allow-list is
+    // authenticated but does not have permission to perform this action.
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to perform this action.',
+        errors: [
+          {
+            field: 'authorization',
+            message: 'Your account role is not allowed to access this resource.',
+          },
+        ],
+      });
+    }
+
+    // The current user has one of the permitted roles.
+    return next();
+  };
+}
+
 export {
   authenticateUser,
+  authorizeRoles,
 };
