@@ -48,6 +48,17 @@ function LoginPage() {
   // useNavigate allows the page to redirect after successful login.
   const navigate = useNavigate();
 
+  // Determine where the user should go after authentication.
+//
+// ProtectedRoute stores the originally requested location in state.from.
+// For a normal visit to /login, no previous protected location exists,
+// so the public homepage remains the default destination.
+const requestedLocation = location.state?.from;
+
+const authenticationDestination = requestedLocation
+  ? `${requestedLocation.pathname}${requestedLocation.search || ''}${requestedLocation.hash || ''}`
+  : '/';
+
   const [formData, setFormData] = useState(
     INITIAL_FORM_DATA
   );
@@ -207,12 +218,18 @@ function LoginPage() {
       //
       // After successful login, return to that route when available.
       // Otherwise, return to the home page.
-      const destination =
-        location.state?.from?.pathname || '/';
+    //   const destination =
+    //     location.state?.from?.pathname || '/';
 
-      navigate(destination, {
-        replace: true,
-      });
+    //   navigate(destination, {
+    //     replace: true,
+    //   });
+
+    // Return the user to the protected route they originally requested.
+// A normal login that was not caused by ProtectedRoute returns home.
+navigate(authenticationDestination, {
+  replace: true,
+});
     } catch (error) {
       handleLoginError(error);
     } finally {
@@ -242,7 +259,7 @@ function LoginPage() {
   if (isAuthenticated) {
     return (
       <Navigate
-        to="/"
+        to={authenticationDestination}
         replace
       />
     );
