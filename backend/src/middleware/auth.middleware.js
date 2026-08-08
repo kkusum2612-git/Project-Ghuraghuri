@@ -233,7 +233,37 @@ function authorizeRoles(...allowedRoles) {
   };
 }
 
+
+function requireApprovedProvider(req, res, next) {
+  if (!req.user) {
+    return sendUnauthorizedResponse(res);
+  }
+
+  const providerRoles = ['hotel', 'guide'];
+
+  if (
+    providerRoles.includes(req.user.role) &&
+    req.user.approvalStatus !== 'approved'
+  ) {
+    return res.status(403).json({
+      success: false,
+      message:
+        'Your account must be approved before you can use provider features.',
+      errors: [
+        {
+          field: 'approvalStatus',
+          message:
+            'Administrator approval is required before using this feature.',
+        },
+      ],
+    });
+  }
+
+  return next();
+}
+
 export {
   authenticateUser,
   authorizeRoles,
+  requireApprovedProvider,
 };

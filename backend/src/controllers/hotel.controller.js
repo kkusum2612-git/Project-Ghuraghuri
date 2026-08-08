@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+
 import Hotel from '../models/hotel.model.js';
 
 function createHttpError(message, statusCode) {
@@ -26,9 +27,39 @@ function parsePrice(value, fieldName) {
   return parsedValue;
 }
 
+const HOTEL_MUTABLE_FIELDS = [
+  'name',
+  'location',
+  'description',
+  'photos',
+  'amenities',
+  'roomTypes',
+  'status',
+];
+
+function pickHotelFields(body) {
+  const hotelData = {};
+
+  HOTEL_MUTABLE_FIELDS.forEach((field) => {
+    if (body[field] !== undefined) {
+      hotelData[field] = body[field];
+    }
+  });
+
+  return hotelData;
+}
+
 async function createHotel(req, res, next) {
   try {
-    const hotel = await Hotel.create(req.body);
+    const hotelData = pickHotelFields(req.body);
+
+    const hotel = await Hotel.create({
+      ...hotelData,
+
+      // Never trust a vendor ID supplied by the frontend.
+      // The authenticated hotel account becomes the owner.
+      vendorId: req.user._id,
+    });
 
     res.status(201).json({
       success: true,
@@ -101,7 +132,8 @@ async function getHotels(req, res, next) {
       if (
         roomFilter.pricePerNight.$gte !== undefined &&
         roomFilter.pricePerNight.$lte !== undefined &&
-        roomFilter.pricePerNight.$gte > roomFilter.pricePerNight.$lte
+        roomFilter.pricePerNight.$gte >
+          roomFilter.pricePerNight.$lte
       ) {
         throw createHttpError(
           'Minimum price cannot be greater than maximum price.',
@@ -135,12 +167,8 @@ async function getHotels(req, res, next) {
 
 async function getVendorHotels(req, res, next) {
   try {
-    const { vendorId } = req.params;
-
-    validateObjectId(vendorId, 'Vendor ID');
-
     const hotels = await Hotel.find({
-      vendorId,
+      vendorId: req.user._id,
     }).sort({
       createdAt: -1,
     });
@@ -158,13 +186,43 @@ async function getVendorHotels(req, res, next) {
   }
 }
 
+async function getVendorHotelById(req, res, next) {
+  try {
+    const { hotelId } = req.params;
+
+    validateObjectId(hotelId, 'Hotel ID');
+
+    const hotel = await Hotel.findOne({
+      _id: hotelId,
+      vendorId: req.user._id,
+    });
+
+    if (!hotel) {
+      throw createHttpError('Hotel listing not found.', 404);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Vendor hotel listing retrieved successfully.',
+      data: {
+        hotel,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function getHotelById(req, res, next) {
   try {
     const { hotelId } = req.params;
 
     validateObjectId(hotelId, 'Hotel ID');
 
-    const hotel = await Hotel.findById(hotelId);
+    const hotel = await Hotel.findOne({
+      _id: hotelId,
+      status: 'active',
+    });
 
     if (!hotel) {
       throw createHttpError('Hotel listing not found.', 404);
@@ -188,9 +246,14 @@ async function updateHotel(req, res, next) {
 
     validateObjectId(hotelId, 'Hotel ID');
 
-    const hotel = await Hotel.findByIdAndUpdate(
-      hotelId,
-      req.body,
+    const updates = pickHotelFields(req.body);
+
+    const hotel = await Hotel.findOneAndUpdate(
+      {
+        _id: hotelId,
+        vendorId: req.user._id,
+      },
+      updates,
       {
         new: true,
         runValidators: true,
@@ -219,7 +282,10 @@ async function deleteHotel(req, res, next) {
 
     validateObjectId(hotelId, 'Hotel ID');
 
-    const hotel = await Hotel.findByIdAndDelete(hotelId);
+    const hotel = await Hotel.findOneAndDelete({
+      _id: hotelId,
+      vendorId: req.user._id,
+    });
 
     if (!hotel) {
       throw createHttpError('Hotel listing not found.', 404);
@@ -242,6 +308,7 @@ export {
   deleteHotel,
   getHotelById,
   getHotels,
+  getVendorHotelById,
   getVendorHotels,
   updateHotel,
 };

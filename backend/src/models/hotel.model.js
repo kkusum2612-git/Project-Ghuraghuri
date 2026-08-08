@@ -33,6 +33,7 @@ const hotelSchema = new mongoose.Schema(
   {
     vendorId: {
       type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
       required: [true, 'Vendor ID is required.'],
       index: true,
     },
