@@ -443,10 +443,13 @@ function HotelDashboardPage() {
                             <div className="h-16 w-24 overflow-hidden rounded-lg bg-[#EEF2F0]">
                               {hotel.photos?.[0] ? (
                                 <img
-                                  src={hotel.photos[0]}
-                                  alt={hotel.name}
-                                  className="h-full w-full object-cover"
-                                />
+                                    src={hotel.photos[0]}
+                                    alt={hotel.name}
+                                    className="h-full w-full object-cover"
+                                    onError={(event) => {
+                                        event.currentTarget.style.display = 'none';
+                                    }}
+                                    />
                               ) : (
                                 <div className="flex h-full items-center justify-center text-xs text-[#8A9690]">
                                   No photo
