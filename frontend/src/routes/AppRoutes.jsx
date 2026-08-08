@@ -4,46 +4,61 @@ import {
   Routes,
 } from 'react-router-dom';
 
+import ProtectedRoute from '../features/auth/components/ProtectedRoute';
+import HotelVendorRoute from '../features/hotels/components/HotelVendorRoute';
+import HotelVendorWorkspace from '../features/hotels/components/HotelVendorWorkspace';
+
+import HotelDashboardPage from '../features/hotels/pages/HotelDashboardPage';
+import HotelFormPage from '../features/hotels/pages/HotelFormPage';
+
 import MainLayout from '../layouts/MainLayout';
+
 import HomePage from '../pages/HomePage';
 import LoginPage from '../pages/LoginPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import RegisterPage from '../pages/RegisterPage';
 
-/**
- * Defines the frontend routes available in the Ghuraghuri application.
- *
- * BrowserRouter enables browser-based navigation without performing a complete
- * page reload for every internal route.
- *
- * MainLayout wraps the route pages so they share common interface elements,
- * including the Navbar and the main page container.
- */
 function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Every nested route below uses MainLayout. */}
         <Route element={<MainLayout />}>
-          {/* Public landing page. */}
           <Route
             path="/"
             element={<HomePage />}
           />
 
-          {/* Public authentication page for existing users. */}
           <Route
             path="/login"
             element={<LoginPage />}
           />
 
-          {/* Public authentication page for creating a new account. */}
           <Route
             path="/register"
             element={<RegisterPage />}
           />
 
-          {/* Catch every unknown route and show the 404 page. */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<HotelVendorRoute />}>
+              <Route element={<HotelVendorWorkspace />}>
+                <Route
+                  path="/hotel/dashboard"
+                  element={<HotelDashboardPage />}
+                />
+
+                <Route
+                  path="/hotel/listings/new"
+                  element={<HotelFormPage />}
+                />
+
+                <Route
+                  path="/hotel/listings/:hotelId/edit"
+                  element={<HotelFormPage />}
+                />
+              </Route>
+            </Route>
+          </Route>
+
           <Route
             path="*"
             element={<NotFoundPage />}
