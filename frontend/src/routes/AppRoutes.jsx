@@ -11,6 +11,13 @@ import HotelVendorWorkspace from '../features/hotels/components/HotelVendorWorks
 import HotelDashboardPage from '../features/hotels/pages/HotelDashboardPage';
 import HotelFormPage from '../features/hotels/pages/HotelFormPage';
 
+import TravelerRoute from '../features/trips/components/TravelerRoute';
+import TripWorkspace from '../features/trips/components/TripWorkspace';
+
+import TripDashboardPage from '../features/trips/pages/TripDashboardPage';
+
+import TripFormPage from '../features/trips/pages/TripFormPage';
+
 import MainLayout from '../layouts/MainLayout';
 
 import HomePage from '../pages/HomePage';
@@ -39,6 +46,24 @@ function AppRoutes() {
           />
 
           <Route element={<ProtectedRoute />}>
+            <Route element={<TravelerRoute />}>
+              <Route element={<TripWorkspace />}>
+                <Route
+                  path="/trips"
+                  element={<TripDashboardPage />}
+                />
+                <Route
+                  path="/trips/new"
+                  element={<TripFormPage />}
+                />
+
+                <Route
+                  path="/trips/:tripId/edit"
+                  element={<TripFormPage />}
+                />
+              </Route>
+            </Route>
+
             <Route element={<HotelVendorRoute />}>
               <Route element={<HotelVendorWorkspace />}>
                 <Route
