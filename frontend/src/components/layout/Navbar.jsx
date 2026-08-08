@@ -102,6 +102,14 @@ function Navbar() {
           </span>
         ) : isAuthenticated ? (
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            {user.role === 'traveler' && (
+              <Link
+                to="/trips"
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2]"
+              >
+                My Trips
+              </Link>
+            )}
             {/* Display the latest user information stored by AuthProvider. */}
             <div className="text-right">
               <p className="max-w-40 truncate text-sm font-semibold text-slate-800 sm:max-w-56">
