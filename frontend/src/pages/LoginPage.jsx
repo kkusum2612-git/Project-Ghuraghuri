@@ -37,6 +37,7 @@ function LoginPage() {
     isAuthenticated,
     isInitializing,
     login,
+    user,
   } = useAuth();
 
   // useLocation provides information about the current route.
@@ -55,9 +56,15 @@ function LoginPage() {
 // so the public homepage remains the default destination.
 const requestedLocation = location.state?.from;
 
-const authenticationDestination = requestedLocation
+const requestedDestination = requestedLocation
   ? `${requestedLocation.pathname}${requestedLocation.search || ''}${requestedLocation.hash || ''}`
-  : '/';
+  : null;
+
+const authenticationDestination =
+  requestedDestination ||
+  (user?.role === 'hotel'
+    ? '/hotel/dashboard'
+    : '/');
 
   const [formData, setFormData] = useState(
     INITIAL_FORM_DATA
@@ -204,14 +211,40 @@ const authenticationDestination = requestedLocation
     setIsSubmitting(true);
 
     try {
-      await login({
-        // Leading and trailing spaces are not meaningful in an email address.
-        email: formData.email.trim(),
+      const result = await login({
+          email: formData.email.trim(),
+          password: formData.password,
+        });
 
-        // Passwords must not be trimmed because spaces may intentionally be
-        // part of a user's password.
-        password: formData.password,
-      });
+        const authenticatedUser = result?.data?.user;
+
+        const requestedLocation = location.state?.from;
+
+        if (requestedLocation?.pathname) {
+          const requestedPath =
+            `${requestedLocation.pathname}` +
+            `${requestedLocation.search || ''}` +
+            `${requestedLocation.hash || ''}`;
+
+          navigate(requestedPath, {
+            replace: true,
+          });
+
+          return;
+        }
+
+        if (authenticatedUser?.role === 'hotel') {
+
+          navigate('/hotel/dashboard', {
+            replace: true,
+          });
+
+          return;
+        }
+
+        navigate('/', {
+          replace: true,
+        });
 
       // A protected route can later redirect a logged-out user to /login and
       // store the original route inside location.state.from.
@@ -227,9 +260,7 @@ const authenticationDestination = requestedLocation
 
     // Return the user to the protected route they originally requested.
 // A normal login that was not caused by ProtectedRoute returns home.
-navigate(authenticationDestination, {
-  replace: true,
-});
+
     } catch (error) {
       handleLoginError(error);
     } finally {
