@@ -1,4 +1,5 @@
 import { Router } from 'express';
+
 import {
   createBooking,
   getBookingById,
@@ -6,14 +7,48 @@ import {
   getVendorBookings,
 } from '../controllers/booking.controller.js';
 
+import {
+  authenticateUser,
+  authorizeRoles,
+  requireApprovedProvider,
+} from '../middleware/auth.middleware.js';
+
 const router = Router();
 
-router.post('/', createBooking);
+const hotelVendorProtection = [
+  authenticateUser,
+  authorizeRoles('hotel'),
+  requireApprovedProvider,
+];
 
-router.get('/vendor/:vendorId', getVendorBookings);
+// Only logged-in travelers can create bookings.
+router.post(
+  '/',
+  authenticateUser,
+  authorizeRoles('traveler'),
+  createBooking
+);
 
-router.get('/traveler/:travelerId', getTravelerBookings);
+// Logged-in hotel sees only bookings belonging to their hotels.
+router.get(
+  '/vendor/me',
+  ...hotelVendorProtection,
+  getVendorBookings
+);
 
-router.get('/:bookingId', getBookingById);
+// Logged-in traveler sees only their own bookings.
+router.get(
+  '/traveler/me',
+  authenticateUser,
+  authorizeRoles('traveler'),
+  getTravelerBookings
+);
+
+// Hotel or traveler can access a booking only if it belongs to them.
+router.get(
+  '/:bookingId',
+  authenticateUser,
+  getBookingById
+);
 
 export default router;

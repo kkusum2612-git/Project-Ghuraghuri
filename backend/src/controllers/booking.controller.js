@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+
 import Booking from '../models/booking.model.js';
 import Hotel from '../models/hotel.model.js';
 
@@ -28,7 +29,6 @@ async function createBooking(req, res, next) {
   try {
     const {
       hotelId,
-      travelerId,
       roomTypeId,
       checkInDate,
       checkOutDate,
@@ -37,7 +37,6 @@ async function createBooking(req, res, next) {
     } = req.body;
 
     validateObjectId(hotelId, 'Hotel ID');
-    validateObjectId(travelerId, 'Traveler ID');
     validateObjectId(roomTypeId, 'Room type ID');
 
     const parsedNumberOfRooms = Number(numberOfRooms);
@@ -131,7 +130,10 @@ async function createBooking(req, res, next) {
       hotelId: hotel.id,
       hotelName: hotel.name,
       vendorId: hotel.vendorId,
-      travelerId,
+
+      // Traveler now comes from authentication.
+      travelerId: req.user._id,
+
       roomTypeId: roomType.id,
       roomTypeName: roomType.name,
       checkInDate: parsedCheckInDate,
@@ -162,15 +164,16 @@ async function createBooking(req, res, next) {
 
 async function getVendorBookings(req, res, next) {
   try {
-    const { vendorId } = req.params;
-
-    validateObjectId(vendorId, 'Vendor ID');
-
     const bookings = await Booking.find({
-      vendorId,
-    }).sort({
-      createdAt: -1,
-    });
+      vendorId: req.user._id,
+    })
+      .populate(
+        'travelerId',
+        'name email phone profileImageUrl'
+      )
+      .sort({
+        createdAt: -1,
+      });
 
     res.status(200).json({
       success: true,
@@ -185,15 +188,10 @@ async function getVendorBookings(req, res, next) {
   }
 }
 
-
 async function getTravelerBookings(req, res, next) {
   try {
-    const { travelerId } = req.params;
-
-    validateObjectId(travelerId, 'Traveler ID');
-
     const bookings = await Booking.find({
-      travelerId,
+      travelerId: req.user._id,
     }).sort({
       createdAt: -1,
     });
@@ -217,7 +215,31 @@ async function getBookingById(req, res, next) {
 
     validateObjectId(bookingId, 'Booking ID');
 
-    const booking = await Booking.findById(bookingId);
+    let filter = {
+      _id: bookingId,
+    };
+
+    if (req.user.role === 'hotel') {
+      filter = {
+        ...filter,
+        vendorId: req.user._id,
+      };
+    } else if (req.user.role === 'traveler') {
+      filter = {
+        ...filter,
+        travelerId: req.user._id,
+      };
+    } else {
+      throw createHttpError(
+        'You are not allowed to access this booking.',
+        403
+      );
+    }
+
+    const booking = await Booking.findOne(filter).populate(
+      'travelerId',
+      'name email phone profileImageUrl'
+    );
 
     if (!booking) {
       throw createHttpError('Booking not found.', 404);

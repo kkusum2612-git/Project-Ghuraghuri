@@ -17,12 +17,14 @@ const bookingSchema = new mongoose.Schema(
 
     vendorId: {
       type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
       required: [true, 'Vendor ID is required.'],
       index: true,
     },
 
     travelerId: {
       type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
       required: [true, 'Traveler ID is required.'],
       index: true,
     },
