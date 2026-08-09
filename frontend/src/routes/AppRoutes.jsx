@@ -93,6 +93,15 @@ import PublicRoomCreatePage from '../features/publicRooms/pages/PublicRoomCreate
 import PublicRoomDetailsPage from '../features/publicRooms/pages/PublicRoomDetailsPage';
 import PublicRoomsPage from '../features/publicRooms/pages/PublicRoomsPage';
 
+import GuideRoute from '../features/guides/components/GuideRoute';
+import GuideWorkspace from '../features/guides/components/GuideWorkspace';
+
+import GuideDashboardPage from '../features/guides/pages/GuideDashboardPage';
+import GuideProfilePage from '../features/guides/pages/GuideProfilePage';
+import GuideTourFormPage from '../features/guides/pages/GuideTourFormPage';
+import GuideToursPage from '../features/guides/pages/GuideToursPage';
+import PublicGuidesPage from '../features/guides/pages/PublicGuidesPage';
+
 import TravelerRoute from '../features/trips/components/TravelerRoute';
 import TripWorkspace from '../features/trips/components/TripWorkspace';
 
@@ -135,6 +144,10 @@ function AppRoutes() {
           <Route
             path="/register"
             element={<RegisterPage />}
+          />
+          <Route
+            path="/guides"
+            element={<PublicGuidesPage />}
           />
 
 
@@ -414,7 +427,6 @@ function AppRoutes() {
               </Route>
             </Route>
 
-
             {/* =================================================
                 HOTEL VENDOR
                ================================================= */}
@@ -446,7 +458,6 @@ function AppRoutes() {
                   }
                 />
 
-
                 {/* Kusum - Hotel Reviews & Ratings */}
                 <Route
                   path="/hotel/reviews"
@@ -456,7 +467,64 @@ function AppRoutes() {
                 />
               </Route>
             </Route>
+
+
+            {/* =================================================
+                TAFSIR - GUIDE MANAGEMENT
+               =================================================
+
+                GuideRoute restricts this workspace to accounts
+                whose role is "guide".
+
+                Pending guides are still allowed into their
+                workspace so they can complete their profile and
+                tour packages before administrator approval.
+            */}
+
+            <Route element={<GuideRoute />}>
+              <Route
+                element={
+                  <GuideWorkspace />
+                }
+              >
+                <Route
+                  path="/guide/dashboard"
+                  element={
+                    <GuideDashboardPage />
+                  }
+                />
+
+                <Route
+                  path="/guide/profile"
+                  element={
+                    <GuideProfilePage />
+                  }
+                />
+
+                <Route
+                  path="/guide/tours"
+                  element={
+                    <GuideToursPage />
+                  }
+                />
+
+                <Route
+                  path="/guide/tours/new"
+                  element={
+                    <GuideTourFormPage />
+                  }
+                />
+
+                <Route
+                  path="/guide/tours/:packageId/edit"
+                  element={
+                    <GuideTourFormPage />
+                  }
+                />
+              </Route>
+            </Route>
           </Route>
+
 
 
           {/*

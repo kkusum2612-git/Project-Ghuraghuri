@@ -64,7 +64,9 @@ const authenticationDestination =
   requestedDestination ||
   (user?.role === 'hotel'
     ? '/hotel/dashboard'
-    : '/');
+    : user?.role === 'guide'
+      ? '/guide/dashboard'
+      : '/');
 
   const [formData, setFormData] = useState(
     INITIAL_FORM_DATA
@@ -234,17 +236,24 @@ const authenticationDestination =
         }
 
         if (authenticatedUser?.role === 'hotel') {
+  navigate('/hotel/dashboard', {
+    replace: true,
+  });
 
-          navigate('/hotel/dashboard', {
-            replace: true,
-          });
+  return;
+}
 
-          return;
-        }
+if (authenticatedUser?.role === 'guide') {
+  navigate('/guide/dashboard', {
+    replace: true,
+  });
 
-        navigate('/', {
-          replace: true,
-        });
+  return;
+}
+
+navigate('/', {
+  replace: true,
+});
 
       // A protected route can later redirect a logged-out user to /login and
       // store the original route inside location.state.from.

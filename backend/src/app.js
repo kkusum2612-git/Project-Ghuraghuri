@@ -69,6 +69,7 @@ import publicRoomRouter from './routes/publicRoom.routes.js';
 import publicRoomChatRouter from './routes/publicRoomChat.routes.js';
 
 import tripRouter from './routes/trip.routes.js';
+import guideRouter from './routes/guide.routes.js';
 
 // Shared image-upload API.
 //
@@ -268,6 +269,12 @@ app.use(
 app.use(
   '/api/v1/auth',
   authRouter
+);
+// Tafsir Feature 1 - guide profile, tour package,
+// and public guide listing APIs.
+app.use(
+  '/api/v1/guides',
+  guideRouter
 );
 
 // Shared administrator APIs.
