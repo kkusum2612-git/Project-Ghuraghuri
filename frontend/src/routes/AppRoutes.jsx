@@ -11,6 +11,15 @@ import HotelVendorWorkspace from '../features/hotels/components/HotelVendorWorks
 import HotelDashboardPage from '../features/hotels/pages/HotelDashboardPage';
 import HotelFormPage from '../features/hotels/pages/HotelFormPage';
 
+import GuideRoute from '../features/guides/components/GuideRoute';
+import GuideWorkspace from '../features/guides/components/GuideWorkspace';
+
+import GuideDashboardPage from '../features/guides/pages/GuideDashboardPage';
+import GuideProfilePage from '../features/guides/pages/GuideProfilePage';
+import GuideTourFormPage from '../features/guides/pages/GuideTourFormPage';
+import GuideToursPage from '../features/guides/pages/GuideToursPage';
+import PublicGuidesPage from '../features/guides/pages/PublicGuidesPage';
+
 import TravelerRoute from '../features/trips/components/TravelerRoute';
 import TripWorkspace from '../features/trips/components/TripWorkspace';
 
@@ -43,6 +52,10 @@ function AppRoutes() {
           <Route
             path="/register"
             element={<RegisterPage />}
+          />
+          <Route
+            path="/guides"
+            element={<PublicGuidesPage />}
           />
 
           <Route element={<ProtectedRoute />}>
@@ -82,6 +95,34 @@ function AppRoutes() {
                 />
               </Route>
             </Route>
+                    <Route element={<GuideRoute />}>
+          <Route element={<GuideWorkspace />}>
+            <Route
+              path="/guide/dashboard"
+              element={<GuideDashboardPage />}
+            />
+
+            <Route
+              path="/guide/profile"
+              element={<GuideProfilePage />}
+            />
+
+            <Route
+              path="/guide/tours"
+              element={<GuideToursPage />}
+            />
+
+            <Route
+              path="/guide/tours/new"
+              element={<GuideTourFormPage />}
+            />
+
+            <Route
+              path="/guide/tours/:packageId/edit"
+              element={<GuideTourFormPage />}
+            />
+          </Route>
+        </Route>
           </Route>
 
           <Route

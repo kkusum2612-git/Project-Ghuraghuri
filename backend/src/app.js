@@ -16,6 +16,7 @@ import bookingRouter from './routes/booking.routes.js';
 import healthRouter from './routes/health.routes.js';
 import hotelRouter from './routes/hotel.routes.js';
 import tripRouter from './routes/trip.routes.js';
+import guideRouter from './routes/guide.routes.js';
 
 const app = express();
 
@@ -73,6 +74,11 @@ app.use(
 app.use(
   '/api/v1/auth',
   authRouter
+);
+
+app.use(
+  '/api/v1/guides',
+  guideRouter
 );
 
 app.use(notFoundHandler);
