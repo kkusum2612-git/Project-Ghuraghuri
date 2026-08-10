@@ -39,6 +39,23 @@ function HotelVendorRoute() {
     );
   }
 
+  if (user.approvalStatus === 'rejected') {
+  return (
+    <section className="flex min-h-[70vh] items-center justify-center px-6">
+      <div className="w-full max-w-2xl rounded-xl border border-red-200 bg-white p-8 text-center shadow-sm">
+        <h1 className="text-2xl font-bold text-[#101820]">
+          Application Rejected
+        </h1>
+
+        <p className="mt-3 text-[#667078]">
+          Your hotel vendor application was rejected by an administrator.
+          You cannot access hotel vendor features with this account.
+        </p>
+      </div>
+    </section>
+  );
+}
+
   if (user.approvalStatus !== 'approved') {
     return (
       <section className="mx-auto flex min-h-[70vh] max-w-2xl items-center justify-center px-6">

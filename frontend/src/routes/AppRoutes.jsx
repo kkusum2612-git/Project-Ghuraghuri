@@ -5,6 +5,10 @@ import {
 } from 'react-router-dom';
 
 import ProtectedRoute from '../features/auth/components/ProtectedRoute';
+
+import AdminRoute from '../features/admin/components/AdminRoute';
+import AdminDashboardPage from '../features/admin/pages/AdminDashboardPage';
+
 import HotelVendorRoute from '../features/hotels/components/HotelVendorRoute';
 import HotelVendorWorkspace from '../features/hotels/components/HotelVendorWorkspace';
 
@@ -46,6 +50,12 @@ function AppRoutes() {
           />
 
           <Route element={<ProtectedRoute />}>
+            <Route element={<AdminRoute />}>
+              <Route
+                path="/admin"
+                element={<AdminDashboardPage />}
+              />
+            </Route>
             <Route element={<TravelerRoute />}>
               <Route element={<TripWorkspace />}>
                 <Route
