@@ -11,6 +11,7 @@ import {
   notFoundHandler,
 } from './middleware/error.middleware.js';
 
+import adminRouter from './routes/admin.routes.js';
 import authRouter from './routes/auth.routes.js';
 import bookingRouter from './routes/booking.routes.js';
 import healthRouter from './routes/health.routes.js';
@@ -73,6 +74,11 @@ app.use(
 app.use(
   '/api/v1/auth',
   authRouter
+);
+
+app.use(
+  '/api/v1/admin',
+  adminRouter
 );
 
 app.use(notFoundHandler);
