@@ -1,5 +1,42 @@
 import apiClient from '../../../api/axiosClient';
 
+async function getHotels(filters = {}) {
+  const response = await apiClient.get(
+    '/hotels',
+    {
+      params: filters,
+    }
+  );
+
+  return response.data;
+}
+
+async function getHotelById(hotelId) {
+  const response = await apiClient.get(
+    `/hotels/${hotelId}`
+  );
+
+  return response.data;
+}
+
+async function getHotelAvailability(
+  hotelId,
+  checkInDate,
+  checkOutDate
+) {
+  const response = await apiClient.get(
+    `/hotels/${hotelId}/availability`,
+    {
+      params: {
+        checkInDate,
+        checkOutDate,
+      },
+    }
+  );
+
+  return response.data;
+}
+
 async function getVendorHotels() {
   const response = await apiClient.get(
     '/hotels/vendor/me'
@@ -45,6 +82,9 @@ async function deleteHotel(hotelId) {
 export {
   createHotel,
   deleteHotel,
+  getHotelAvailability,
+  getHotelById,
+  getHotels,
   getVendorHotelById,
   getVendorHotels,
   updateHotel,

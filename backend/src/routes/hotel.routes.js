@@ -3,6 +3,7 @@ import { Router } from 'express';
 import {
   createHotel,
   deleteHotel,
+  getHotelAvailability,
   getHotelById,
   getHotels,
   getVendorHotelById,
@@ -48,6 +49,11 @@ router.get(
   '/vendor/me/:hotelId',
   ...hotelVendorProtection,
   getVendorHotelById
+);
+
+router.get(
+  '/:hotelId/availability',
+  getHotelAvailability
 );
 
 // Public hotel details.

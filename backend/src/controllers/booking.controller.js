@@ -97,9 +97,45 @@ async function createBooking(req, res, next) {
       );
     }
 
-    if (roomType.availableRooms < parsedNumberOfRooms) {
+    const overlappingBookings = await Booking.find({
+      hotelId: hotel._id,
+      roomTypeId: roomType._id,
+
+      bookingStatus: {
+        $in: [
+          'pending',
+          'confirmed',
+        ],
+      },
+
+      // Existing booking begins before the requested stay ends.
+      checkInDate: {
+        $lt: parsedCheckOutDate,
+      },
+
+      // Existing booking ends after the requested stay begins.
+      checkOutDate: {
+        $gt: parsedCheckInDate,
+      },
+    }).select('numberOfRooms');
+
+    const reservedRooms = overlappingBookings.reduce(
+      (total, existingBooking) =>
+        total + existingBooking.numberOfRooms,
+      0
+    );
+
+    const availableRoomsForDates =
+      roomType.availableRooms - reservedRooms;
+
+    if (
+      availableRoomsForDates < parsedNumberOfRooms
+    ) {
       throw createHttpError(
-        'The requested number of rooms is not available.',
+        `Only ${Math.max(
+          availableRoomsForDates,
+          0
+        )} room(s) are available for the selected dates.`,
         400
       );
     }
@@ -146,9 +182,6 @@ async function createBooking(req, res, next) {
       bookingStatus: 'pending',
       paymentStatus: 'unpaid',
     });
-
-    roomType.availableRooms -= parsedNumberOfRooms;
-    await hotel.save();
 
     res.status(201).json({
       success: true,

@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 
+import Booking from '../models/booking.model.js';
 import Hotel from '../models/hotel.model.js';
 
 function createHttpError(message, statusCode) {
@@ -240,6 +241,179 @@ async function getHotelById(req, res, next) {
   }
 }
 
+async function getHotelAvailability(
+  req,
+  res,
+  next
+) {
+  try {
+    const { hotelId } = req.params;
+
+    const {
+      checkInDate,
+      checkOutDate,
+    } = req.query;
+
+    validateObjectId(
+      hotelId,
+      'Hotel ID'
+    );
+
+    if (!checkInDate || !checkOutDate) {
+      throw createHttpError(
+        'Check-in date and check-out date are required.',
+        400
+      );
+    }
+
+    const parsedCheckInDate =
+      new Date(checkInDate);
+
+    const parsedCheckOutDate =
+      new Date(checkOutDate);
+
+    if (
+      Number.isNaN(
+        parsedCheckInDate.getTime()
+      )
+    ) {
+      throw createHttpError(
+        'Check-in date is invalid.',
+        400
+      );
+    }
+
+    if (
+      Number.isNaN(
+        parsedCheckOutDate.getTime()
+      )
+    ) {
+      throw createHttpError(
+        'Check-out date is invalid.',
+        400
+      );
+    }
+
+    if (
+      parsedCheckOutDate <=
+      parsedCheckInDate
+    ) {
+      throw createHttpError(
+        'Check-out date must be after the check-in date.',
+        400
+      );
+    }
+
+    const hotel = await Hotel.findOne({
+      _id: hotelId,
+      status: 'active',
+    });
+
+    if (!hotel) {
+      throw createHttpError(
+        'Hotel listing not found.',
+        404
+      );
+    }
+
+    const overlappingBookings =
+      await Booking.find({
+        hotelId: hotel._id,
+
+        bookingStatus: {
+          $in: [
+            'pending',
+            'confirmed',
+          ],
+        },
+
+        checkInDate: {
+          $lt: parsedCheckOutDate,
+        },
+
+        checkOutDate: {
+          $gt: parsedCheckInDate,
+        },
+      }).select(
+        'roomTypeId numberOfRooms'
+      );
+
+    const reservedRoomsByType = {};
+
+    overlappingBookings.forEach(
+      (booking) => {
+        const roomTypeId =
+          booking.roomTypeId.toString();
+
+        reservedRoomsByType[
+          roomTypeId
+        ] =
+          (
+            reservedRoomsByType[
+              roomTypeId
+            ] || 0
+          ) + booking.numberOfRooms;
+      }
+    );
+
+    const roomTypes =
+      hotel.roomTypes.map(
+        (roomType) => {
+          const reservedRooms =
+            reservedRoomsByType[
+              roomType._id.toString()
+            ] || 0;
+
+          return {
+            roomTypeId:
+              roomType._id,
+
+            name:
+              roomType.name,
+
+            pricePerNight:
+              roomType.pricePerNight,
+
+            capacity:
+              roomType.capacity,
+
+            totalRooms:
+              roomType.availableRooms,
+
+            reservedRooms,
+
+            availableRooms:
+              Math.max(
+                roomType.availableRooms -
+                  reservedRooms,
+                0
+              ),
+          };
+        }
+      );
+
+    res.status(200).json({
+      success: true,
+      message:
+        'Hotel room availability retrieved successfully.',
+      data: {
+        hotelId:
+          hotel._id,
+
+        checkInDate:
+          parsedCheckInDate,
+
+        checkOutDate:
+          parsedCheckOutDate,
+
+        roomTypes,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function updateHotel(req, res, next) {
   try {
     const { hotelId } = req.params;
@@ -306,6 +480,7 @@ async function deleteHotel(req, res, next) {
 export {
   createHotel,
   deleteHotel,
+  getHotelAvailability,
   getHotelById,
   getHotels,
   getVendorHotelById,
