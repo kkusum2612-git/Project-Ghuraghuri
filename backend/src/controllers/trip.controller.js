@@ -36,6 +36,174 @@ function createDateRange(startDate, endDate) {
   return dates;
 }
 
+async function resequenceDayStops(
+  dayId
+) {
+  const stops =
+    await Stop.find({
+      day: dayId,
+    })
+      .sort({
+        order: 1,
+        _id: 1,
+      })
+      .select('_id order')
+      .lean();
+
+  if (stops.length === 0) {
+    return;
+  }
+
+  const highestOrder =
+    Math.max(
+      ...stops.map(
+        (stop) => stop.order
+      )
+    );
+
+  const temporaryBase =
+    highestOrder +
+    stops.length +
+    1000;
+
+  await Promise.all(
+    stops.map(
+      (stop, index) =>
+        Stop.updateOne(
+          {
+            _id: stop._id,
+          },
+          {
+            $set: {
+              order:
+                temporaryBase +
+                index +
+                1,
+            },
+          }
+        )
+    )
+  );
+
+  await Promise.all(
+    stops.map(
+      (stop, index) =>
+        Stop.updateOne(
+          {
+            _id: stop._id,
+          },
+          {
+            $set: {
+              order:
+                index + 1,
+            },
+          }
+        )
+    )
+  );
+}
+
+function getTripDayCount(
+  startDate,
+  endDate
+) {
+  return (
+    Math.floor(
+      (endDate.getTime() -
+        startDate.getTime()) /
+        ONE_DAY_IN_MILLISECONDS
+    ) + 1
+  );
+}
+
+
+async function getDayRemovalImpact(
+  tripId,
+  desiredDayCount
+) {
+  const removedDays =
+    await Day.find({
+      trip: tripId,
+      dayNumber: {
+        $gt: desiredDayCount,
+      },
+    })
+      .sort({
+        dayNumber: 1,
+      })
+      .lean();
+
+  if (removedDays.length === 0) {
+    return {
+      removedDays: [],
+      removedStopCount: 0,
+    };
+  }
+
+  const removedDayIds =
+    removedDays.map(
+      (day) => day._id
+    );
+
+  const stopCounts =
+    await Stop.aggregate([
+      {
+        $match: {
+          day: {
+            $in: removedDayIds,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: '$day',
+          count: {
+            $sum: 1,
+          },
+        },
+      },
+    ]);
+
+  const stopCountByDay =
+    new Map(
+      stopCounts.map(
+        (item) => [
+          item._id.toString(),
+          item.count,
+        ]
+      )
+    );
+
+  const daySummaries =
+    removedDays.map(
+      (day) => ({
+        dayId: day._id,
+        dayNumber:
+          day.dayNumber,
+        date: day.date,
+        stopCount:
+          stopCountByDay.get(
+            day._id.toString()
+          ) || 0,
+      })
+    );
+
+  const removedStopCount =
+    daySummaries.reduce(
+      (total, day) =>
+        total + day.stopCount,
+      0
+    );
+
+  return {
+    removedDays:
+      daySummaries,
+    removedStopCount,
+  };
+}
+
+
+
 function validateDestination(destination) {
   if (
     !destination ||
@@ -494,6 +662,1013 @@ async function getTripById(
   }
 }
 
+
+
+async function getTripDays(
+  req,
+  res,
+  next
+) {
+  try {
+    const { tripId } = req.params;
+
+    if (
+      !mongoose.isValidObjectId(
+        tripId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid trip ID.',
+      });
+    }
+
+    const trip =
+      await Trip.findOne({
+        _id: tripId,
+        owner: req.user._id,
+      }).lean();
+
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Trip not found.',
+      });
+    }
+
+    const days =
+      await Day.find({
+        trip: tripId,
+      })
+        .sort({
+          dayNumber: 1,
+        })
+        .lean();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        'Trip days fetched successfully.',
+      count: days.length,
+      data: days,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+
+async function addStop(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      tripId,
+      dayId,
+    } = req.params;
+
+    if (
+      !mongoose.isValidObjectId(
+        tripId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid trip ID.',
+      });
+    }
+
+    if (
+      !mongoose.isValidObjectId(
+        dayId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid day ID.',
+      });
+    }
+
+    const trip =
+      await Trip.findOne({
+        _id: tripId,
+        owner: req.user._id,
+      })
+        .select('_id')
+        .lean();
+
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Trip not found.',
+      });
+    }
+
+    const day =
+      await Day.findOne({
+        _id: dayId,
+        trip: tripId,
+      })
+        .select(
+          '_id dayNumber date'
+        )
+        .lean();
+
+    if (!day) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Day not found for this trip.',
+      });
+    }
+
+    const {
+      placeName,
+      description = '',
+      latitude,
+      longitude,
+      visitTime = '',
+      estimatedDurationMinutes = 0,
+    } = req.body;
+
+    if (
+      typeof placeName !==
+        'string' ||
+      placeName.trim() === ''
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Place name is required.',
+      });
+    }
+
+    if (
+      description !== undefined &&
+      typeof description !==
+        'string'
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Description must be text.',
+      });
+    }
+
+    if (
+      visitTime !== undefined &&
+      typeof visitTime !== 'string'
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Visit time must be text.',
+      });
+    }
+
+    if (
+      latitude === undefined ||
+      latitude === null ||
+      latitude === ''
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Latitude is required.',
+      });
+    }
+
+    if (
+      longitude === undefined ||
+      longitude === null ||
+      longitude === ''
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Longitude is required.',
+      });
+    }
+
+    const parsedLatitude =
+      Number(latitude);
+
+    const parsedLongitude =
+      Number(longitude);
+
+    if (
+      !Number.isFinite(
+        parsedLatitude
+      ) ||
+      parsedLatitude < -90 ||
+      parsedLatitude > 90
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Latitude must be between -90 and 90.',
+      });
+    }
+
+    if (
+      !Number.isFinite(
+        parsedLongitude
+      ) ||
+      parsedLongitude < -180 ||
+      parsedLongitude > 180
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Longitude must be between -180 and 180.',
+      });
+    }
+
+    const parsedDuration =
+      Number(
+        estimatedDurationMinutes
+      );
+
+    if (
+      !Number.isFinite(
+        parsedDuration
+      ) ||
+      parsedDuration < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Estimated duration must be zero or greater.',
+      });
+    }
+
+    const lastStop =
+      await Stop.findOne({
+        day: dayId,
+      })
+        .sort({
+          order: -1,
+        })
+        .select('order')
+        .lean();
+
+    const nextOrder =
+      lastStop
+        ? lastStop.order + 1
+        : 1;
+
+    const stop =
+      await Stop.create({
+        trip: tripId,
+        day: dayId,
+
+        placeName:
+          placeName.trim(),
+
+        description:
+          description.trim(),
+
+        latitude:
+          parsedLatitude,
+
+        longitude:
+          parsedLongitude,
+
+        visitTime:
+          visitTime.trim(),
+
+        estimatedDurationMinutes:
+          parsedDuration,
+
+        order: nextOrder,
+      });
+
+    return res.status(201).json({
+      success: true,
+      message:
+        'Stop added successfully.',
+      data: stop,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+
+
+async function getDayStops(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      tripId,
+      dayId,
+    } = req.params;
+
+    if (
+      !mongoose.isValidObjectId(
+        tripId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid trip ID.',
+      });
+    }
+
+    if (
+      !mongoose.isValidObjectId(
+        dayId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid day ID.',
+      });
+    }
+
+    const trip =
+      await Trip.findOne({
+        _id: tripId,
+        owner: req.user._id,
+      })
+        .select('_id')
+        .lean();
+
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Trip not found.',
+      });
+    }
+
+    const day =
+      await Day.findOne({
+        _id: dayId,
+        trip: tripId,
+      })
+        .select(
+          '_id dayNumber date'
+        )
+        .lean();
+
+    if (!day) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Day not found for this trip.',
+      });
+    }
+
+    const stops =
+      await Stop.find({
+        trip: tripId,
+        day: dayId,
+      })
+        .sort({
+          order: 1,
+        })
+        .lean();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        'Day stops fetched successfully.',
+      count: stops.length,
+      data: {
+        day,
+        stops,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+
+
+
+async function updateStop(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      tripId,
+      dayId,
+      stopId,
+    } = req.params;
+
+    if (
+      !mongoose.isValidObjectId(
+        tripId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid trip ID.',
+      });
+    }
+
+    if (
+      !mongoose.isValidObjectId(
+        dayId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid day ID.',
+      });
+    }
+
+    if (
+      !mongoose.isValidObjectId(
+        stopId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid stop ID.',
+      });
+    }
+
+    const trip =
+      await Trip.findOne({
+        _id: tripId,
+        owner: req.user._id,
+      })
+        .select('_id')
+        .lean();
+
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Trip not found.',
+      });
+    }
+
+    const day =
+      await Day.findOne({
+        _id: dayId,
+        trip: tripId,
+      })
+        .select('_id')
+        .lean();
+
+    if (!day) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Day not found for this trip.',
+      });
+    }
+
+    const stop =
+      await Stop.findOne({
+        _id: stopId,
+        trip: tripId,
+        day: dayId,
+      });
+
+    if (!stop) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Stop not found for this day.',
+      });
+    }
+
+    const {
+      placeName,
+      description,
+      latitude,
+      longitude,
+      visitTime,
+      estimatedDurationMinutes,
+    } = req.body;
+
+    if (
+      placeName !== undefined
+    ) {
+      if (
+        typeof placeName !==
+          'string' ||
+        placeName.trim() === ''
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Place name cannot be empty.',
+        });
+      }
+
+      stop.placeName =
+        placeName.trim();
+    }
+
+    if (
+      description !== undefined
+    ) {
+      if (
+        typeof description !==
+        'string'
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Description must be text.',
+        });
+      }
+
+      stop.description =
+        description.trim();
+    }
+
+    if (
+      latitude !== undefined
+    ) {
+      const parsedLatitude =
+        Number(latitude);
+
+      if (
+        !Number.isFinite(
+          parsedLatitude
+        ) ||
+        parsedLatitude < -90 ||
+        parsedLatitude > 90
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Latitude must be between -90 and 90.',
+        });
+      }
+
+      stop.latitude =
+        parsedLatitude;
+    }
+
+    if (
+      longitude !== undefined
+    ) {
+      const parsedLongitude =
+        Number(longitude);
+
+      if (
+        !Number.isFinite(
+          parsedLongitude
+        ) ||
+        parsedLongitude < -180 ||
+        parsedLongitude > 180
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Longitude must be between -180 and 180.',
+        });
+      }
+
+      stop.longitude =
+        parsedLongitude;
+    }
+
+    if (
+      visitTime !== undefined
+    ) {
+      if (
+        typeof visitTime !==
+        'string'
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Visit time must be text.',
+        });
+      }
+
+      stop.visitTime =
+        visitTime.trim();
+    }
+
+    if (
+      estimatedDurationMinutes !==
+      undefined
+    ) {
+      const parsedDuration =
+        Number(
+          estimatedDurationMinutes
+        );
+
+      if (
+        !Number.isFinite(
+          parsedDuration
+        ) ||
+        parsedDuration < 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Estimated duration must be zero or greater.',
+        });
+      }
+
+      stop.estimatedDurationMinutes =
+        parsedDuration;
+    }
+
+    await stop.save();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        'Stop updated successfully.',
+      data: stop,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+
+
+async function deleteStop(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      tripId,
+      dayId,
+      stopId,
+    } = req.params;
+
+    if (
+      !mongoose.isValidObjectId(
+        tripId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid trip ID.',
+      });
+    }
+
+    if (
+      !mongoose.isValidObjectId(
+        dayId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid day ID.',
+      });
+    }
+
+    if (
+      !mongoose.isValidObjectId(
+        stopId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid stop ID.',
+      });
+    }
+
+    const trip =
+      await Trip.findOne({
+        _id: tripId,
+        owner: req.user._id,
+      })
+        .select('_id')
+        .lean();
+
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Trip not found.',
+      });
+    }
+
+    const day =
+      await Day.findOne({
+        _id: dayId,
+        trip: tripId,
+      })
+        .select('_id')
+        .lean();
+
+    if (!day) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Day not found for this trip.',
+      });
+    }
+
+    const stop =
+      await Stop.findOne({
+        _id: stopId,
+        trip: tripId,
+        day: dayId,
+      });
+
+    if (!stop) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Stop not found for this day.',
+      });
+    }
+
+    const deletedStop = {
+      _id: stop._id,
+      placeName:
+        stop.placeName,
+      order: stop.order,
+    };
+
+    await stop.deleteOne();
+
+    await resequenceDayStops(
+      dayId
+    );
+
+    return res.status(200).json({
+      success: true,
+      message:
+        'Stop deleted successfully.',
+      data: deletedStop,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+
+
+async function reorderStops(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      tripId,
+      dayId,
+    } = req.params;
+
+    if (
+      !mongoose.isValidObjectId(
+        tripId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid trip ID.',
+      });
+    }
+
+    if (
+      !mongoose.isValidObjectId(
+        dayId
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid day ID.',
+      });
+    }
+
+    const {
+      stopIds,
+    } = req.body;
+
+    if (
+      !Array.isArray(stopIds) ||
+      stopIds.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'stopIds must be a non-empty array.',
+      });
+    }
+
+    const hasInvalidStopId =
+      stopIds.some(
+        (stopId) =>
+          !mongoose.isValidObjectId(
+            stopId
+          )
+      );
+
+    if (hasInvalidStopId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Every stop ID must be valid.',
+      });
+    }
+
+    const uniqueStopIds =
+      new Set(
+        stopIds.map(
+          (stopId) =>
+            stopId.toString()
+        )
+      );
+
+    if (
+      uniqueStopIds.size !==
+      stopIds.length
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Duplicate stop IDs are not allowed.',
+      });
+    }
+
+    const trip =
+      await Trip.findOne({
+        _id: tripId,
+        owner: req.user._id,
+      })
+        .select('_id')
+        .lean();
+
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Trip not found.',
+      });
+    }
+
+    const day =
+      await Day.findOne({
+        _id: dayId,
+        trip: tripId,
+      })
+        .select('_id')
+        .lean();
+
+    if (!day) {
+      return res.status(404).json({
+        success: false,
+        message:
+          'Day not found for this trip.',
+      });
+    }
+
+    const existingStops =
+      await Stop.find({
+        trip: tripId,
+        day: dayId,
+      })
+        .select('_id order')
+        .sort({
+          order: 1,
+        })
+        .lean();
+
+    if (
+      existingStops.length !==
+      stopIds.length
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'The reorder request must include every stop for this day exactly once.',
+      });
+    }
+
+    const existingStopIds =
+      new Set(
+        existingStops.map(
+          (stop) =>
+            stop._id.toString()
+        )
+      );
+
+    const containsUnknownStop =
+      stopIds.some(
+        (stopId) =>
+          !existingStopIds.has(
+            stopId.toString()
+          )
+      );
+
+    if (containsUnknownStop) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'One or more stops do not belong to this day.',
+      });
+    }
+
+    const highestOrder =
+      Math.max(
+        ...existingStops.map(
+          (stop) =>
+            stop.order
+        )
+      );
+
+    const temporaryBase =
+      highestOrder +
+      existingStops.length +
+      1000;
+
+    await Promise.all(
+      stopIds.map(
+        (stopId, index) =>
+          Stop.updateOne(
+            {
+              _id: stopId,
+              trip: tripId,
+              day: dayId,
+            },
+            {
+              $set: {
+                order:
+                  temporaryBase +
+                  index +
+                  1,
+              },
+            }
+          )
+      )
+    );
+
+    await Promise.all(
+      stopIds.map(
+        (stopId, index) =>
+          Stop.updateOne(
+            {
+              _id: stopId,
+              trip: tripId,
+              day: dayId,
+            },
+            {
+              $set: {
+                order:
+                  index + 1,
+              },
+            }
+          )
+      )
+    );
+
+    const reorderedStops =
+      await Stop.find({
+        trip: tripId,
+        day: dayId,
+      })
+        .sort({
+          order: 1,
+        })
+        .lean();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        'Stops reordered successfully.',
+      data: reorderedStops,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+
+
+
 async function updateTrip(
   req,
   res,
@@ -654,6 +1829,69 @@ async function updateTrip(
       oldEndDate.getTime() !==
         newEndDate.getTime();
 
+    if (datesChanged) {
+      const oldDayCount =
+        getTripDayCount(
+          oldStartDate,
+          oldEndDate
+        );
+
+      const newDayCount =
+        getTripDayCount(
+          newStartDate,
+          newEndDate
+        );
+
+      if (
+        newDayCount <
+        oldDayCount
+      ) {
+        const removalImpact =
+          await getDayRemovalImpact(
+            trip._id,
+            newDayCount
+          );
+
+        if (
+          removalImpact
+            .removedStopCount > 0 &&
+          req.body
+            .confirmDayRemoval !==
+            true
+        ) {
+          return res
+            .status(409)
+            .json({
+              success: false,
+
+              message:
+                'Shortening this trip will remove itinerary days containing stops. Confirmation is required.',
+
+              data: {
+                requiresConfirmation:
+                  true,
+
+                oldDayCount,
+                newDayCount,
+
+                removedDayCount:
+                  removalImpact
+                    .removedDays
+                    .length,
+
+                removedStopCount:
+                  removalImpact
+                    .removedStopCount,
+
+                removedDays:
+                  removalImpact
+                    .removedDays,
+              },
+            });
+        }
+      }
+    }
+
     trip.startDate =
       newStartDate;
 
@@ -790,9 +2028,15 @@ async function deleteTrip(
 }
 
 export {
+  addStop,
   createTrip,
+  deleteStop,
   deleteTrip,
+  getDayStops,
   getTripById,
+  getTripDays,
   getTrips,
+  reorderStops,
+  updateStop,
   updateTrip,
 };
