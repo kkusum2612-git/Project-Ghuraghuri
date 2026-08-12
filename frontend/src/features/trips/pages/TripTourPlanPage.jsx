@@ -19,6 +19,10 @@ import {
   reorderStops,
 } from '../api/tripApi';
 
+import {
+  getRouteForStops,
+} from '../api/osrmApi';
+
 function formatDate(value) {
   if (!value) {
     return '';
@@ -32,6 +36,44 @@ function formatDate(value) {
       year: 'numeric',
     }
   ).format(new Date(value));
+}
+
+function formatDistance(
+  distanceMeters
+) {
+  const kilometers =
+    distanceMeters / 1000;
+
+  return `${kilometers.toFixed(
+    1
+  )} km`;
+}
+
+function formatDuration(
+  durationSeconds
+) {
+  const totalMinutes =
+    Math.round(
+      durationSeconds / 60
+    );
+
+  const hours =
+    Math.floor(
+      totalMinutes / 60
+    );
+
+  const minutes =
+    totalMinutes % 60;
+
+  if (hours === 0) {
+    return `${minutes} min`;
+  }
+
+  if (minutes === 0) {
+    return `${hours} hr`;
+  }
+
+  return `${hours} hr ${minutes} min`;
 }
 
 function TripTourPlanPage() {
@@ -91,6 +133,21 @@ function TripTourPlanPage() {
     isReordering,
     setIsReordering,
   ] = useState(false);
+
+  const [
+    routeData,
+    setRouteData,
+  ] = useState(null);
+
+  const [
+    isLoadingRoute,
+    setIsLoadingRoute,
+  ] = useState(false);
+
+  const [
+    routeError,
+    setRouteError,
+  ] = useState('');
 
   useEffect(() => {
     let ignoreResult = false;
@@ -207,6 +264,66 @@ function TripTourPlanPage() {
     tripId,
     selectedDayId,
   ]);
+
+  useEffect(() => {
+    const controller =
+      new AbortController();
+
+    let ignoreResult = false;
+
+    async function loadRoute() {
+      setIsLoadingRoute(true);
+      setRouteError('');
+
+      try {
+        const result =
+          await getRouteForStops(
+            stops,
+            {
+              signal:
+                controller.signal,
+            }
+          );
+
+        if (ignoreResult) {
+          return;
+        }
+
+        setRouteData(
+          result
+        );
+      } catch (error) {
+        if (
+          controller.signal
+            .aborted
+        ) {
+          return;
+        }
+
+        if (!ignoreResult) {
+          setRouteData(null);
+
+          setRouteError(
+            error.message ||
+              'Unable to calculate the road route.'
+          );
+        }
+      } finally {
+        if (!ignoreResult) {
+          setIsLoadingRoute(
+            false
+          );
+        }
+      }
+    }
+
+    void loadRoute();
+
+    return () => {
+      ignoreResult = true;
+      controller.abort();
+    };
+  }, [stops]);
 
   function handleStopAdded(
     newStop
@@ -762,9 +879,79 @@ function TripTourPlanPage() {
           />
         </div>
 
-        <TripMap
-          stops={stops}
-        />
+        <div>
+          <div className="mb-4 rounded-xl border border-[#DCE5E0] bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#66756D]">
+                  Road Route
+                </p>
+
+                {isLoadingRoute ? (
+                  <p className="mt-1 text-sm font-semibold text-[#0F6B4D]">
+                    Calculating route...
+                  </p>
+                ) : routeData ? (
+                  <p className="mt-1 text-sm text-[#44524B]">
+                    OSRM route
+                    calculated successfully.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm text-[#66756D]">
+                    Add at least two
+                    destinations to
+                    calculate a road
+                    route.
+                  </p>
+                )}
+              </div>
+
+              {routeData && (
+                <div className="flex gap-2">
+                  <div className="rounded-lg bg-[#EEF7F2] px-3 py-2 text-center">
+                    <p className="text-xs text-[#66756D]">
+                      Distance
+                    </p>
+
+                    <p className="mt-0.5 text-sm font-bold text-[#0F6B4D]">
+                      {formatDistance(
+                        routeData
+                          .distanceMeters
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg bg-[#EEF7F2] px-3 py-2 text-center">
+                    <p className="text-xs text-[#66756D]">
+                      Travel time
+                    </p>
+
+                    <p className="mt-0.5 text-sm font-bold text-[#0F6B4D]">
+                      {formatDuration(
+                        routeData
+                          .durationSeconds
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {routeError && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                {routeError}
+              </div>
+            )}
+          </div>
+
+            <TripMap
+            stops={stops}
+            routePoints={
+                routeData?.routePoints ||
+                []
+            }
+            />
+        </div>
       </section>
     </div>
   );

@@ -1,8 +1,13 @@
+import {
+  useEffect,
+} from 'react';
+
 import L from 'leaflet';
 
 import {
   MapContainer,
   Marker,
+  Polyline,
   Popup,
   TileLayer,
   useMap,
@@ -15,172 +20,222 @@ const DEFAULT_CENTER = [
   90.3563,
 ];
 
+function isValidCoordinate(
+  latitude,
+  longitude
+) {
+  const numericLatitude =
+    Number(latitude);
+
+  const numericLongitude =
+    Number(longitude);
+
+  return (
+    Number.isFinite(
+      numericLatitude
+    ) &&
+    Number.isFinite(
+      numericLongitude
+    ) &&
+    numericLatitude >= -90 &&
+    numericLatitude <= 90 &&
+    numericLongitude >= -180 &&
+    numericLongitude <= 180
+  );
+}
+
+function isValidRoutePoint(
+  point
+) {
+  return (
+    Array.isArray(point) &&
+    point.length >= 2 &&
+    isValidCoordinate(
+      point[0],
+      point[1]
+    )
+  );
+}
+
 function createNumberedIcon(
   number
 ) {
-  const marker =
+  const markerElement =
     L.DomUtil.create('div');
 
-  marker.textContent =
-    String(number);
-
-  marker.style.width =
+  markerElement.style.width =
     '34px';
 
-  marker.style.height =
+  markerElement.style.height =
     '34px';
 
-  marker.style.display =
-    'flex';
+  markerElement.style.borderRadius =
+    '50%';
 
-  marker.style.alignItems =
-    'center';
-
-  marker.style.justifyContent =
-    'center';
-
-  marker.style.borderRadius =
-    '9999px';
-
-  marker.style.background =
+  markerElement.style.background =
     '#0F6B4D';
 
-  marker.style.color =
+  markerElement.style.color =
     '#FFFFFF';
 
-  marker.style.fontWeight =
-    '700';
-
-  marker.style.fontSize =
-    '14px';
-
-  marker.style.border =
+  markerElement.style.border =
     '3px solid #FFFFFF';
 
-  marker.style.boxShadow =
+  markerElement.style.boxShadow =
     '0 2px 8px rgba(0, 0, 0, 0.25)';
 
+  markerElement.style.display =
+    'flex';
+
+  markerElement.style.alignItems =
+    'center';
+
+  markerElement.style.justifyContent =
+    'center';
+
+  markerElement.style.fontSize =
+    '14px';
+
+  markerElement.style.fontWeight =
+    '700';
+
+  markerElement.textContent =
+    String(number);
+
   return L.divIcon({
-    html: marker,
+    html:
+      markerElement.outerHTML,
+
     className: '',
-    iconSize: [34, 34],
-    iconAnchor: [17, 17],
-    popupAnchor: [0, -18],
+
+    iconSize: [
+      34,
+      34,
+    ],
+
+    iconAnchor: [
+      17,
+      17,
+    ],
+
+    popupAnchor: [
+      0,
+      -20,
+    ],
   });
 }
 
 function MapViewport({
   stops,
+  routePoints,
 }) {
   const map = useMap();
 
-  const validStops =
-    stops.filter(
-      (stop) =>
-        Number.isFinite(
-          Number(
-            stop.latitude
-          )
-        ) &&
-        Number.isFinite(
-          Number(
+  useEffect(() => {
+    const stopPoints =
+      stops
+        .filter((stop) =>
+          isValidCoordinate(
+            stop.latitude,
             stop.longitude
           )
         )
-    );
+        .map((stop) => [
+          Number(
+            stop.latitude
+          ),
+          Number(
+            stop.longitude
+          ),
+        ]);
 
-  if (
-    validStops.length === 1
-  ) {
-    const stop =
-      validStops[0];
+    const validRoutePoints =
+      Array.isArray(
+        routePoints
+      )
+        ? routePoints.filter(
+            isValidRoutePoint
+          )
+        : [];
 
-    map.setView(
-      [
-        Number(
-          stop.latitude
-        ),
-        Number(
-          stop.longitude
-        ),
-      ],
-      13
-    );
+    const pointsToDisplay =
+      validRoutePoints.length >= 2
+        ? validRoutePoints
+        : stopPoints;
 
-    return null;
-  }
+    if (
+      pointsToDisplay.length ===
+      0
+    ) {
+      map.setView(
+        DEFAULT_CENTER,
+        7
+      );
 
-  if (
-    validStops.length > 1
-  ) {
+      return;
+    }
+
+    if (
+      pointsToDisplay.length ===
+      1
+    ) {
+      map.setView(
+        pointsToDisplay[0],
+        13
+      );
+
+      return;
+    }
+
     const bounds =
       L.latLngBounds(
-        validStops.map(
-          (stop) => [
-            Number(
-              stop.latitude
-            ),
-            Number(
-              stop.longitude
-            ),
-          ]
-        )
+        pointsToDisplay
       );
 
     map.fitBounds(
       bounds,
       {
-        padding: [50, 50],
+        padding: [
+          40,
+          40,
+        ],
       }
     );
-  }
+  }, [
+    map,
+    routePoints,
+    stops,
+  ]);
 
   return null;
 }
 
 function TripMap({
-  stops,
+  stops = [],
+  routePoints = [],
 }) {
   const validStops =
-    stops.filter(
-      (stop) =>
-        Number.isFinite(
-          Number(
-            stop.latitude
-          )
-        ) &&
-        Number.isFinite(
-          Number(
-            stop.longitude
-          )
-        )
+    stops.filter((stop) =>
+      isValidCoordinate(
+        stop.latitude,
+        stop.longitude
+      )
     );
 
-  const initialCenter =
-    validStops.length > 0
-      ? [
-          Number(
-            validStops[0]
-              .latitude
-          ),
-          Number(
-            validStops[0]
-              .longitude
-          ),
-        ]
-      : DEFAULT_CENTER;
+  const validRoutePoints =
+    Array.isArray(routePoints)
+      ? routePoints.filter(
+          isValidRoutePoint
+        )
+      : [];
 
   return (
     <div className="overflow-hidden rounded-xl border border-[#DCE5E0] bg-white shadow-sm">
       <MapContainer
         center={
-          initialCenter
+          DEFAULT_CENTER
         }
-        zoom={
-          validStops.length > 0
-            ? 13
-            : 7
-        }
+        zoom={7}
         scrollWheelZoom
         className="h-[480px] w-full"
       >
@@ -190,13 +245,35 @@ function TripMap({
         />
 
         <MapViewport
-          stops={validStops}
+          stops={
+            validStops
+          }
+          routePoints={
+            validRoutePoints
+          }
         />
+
+        {validRoutePoints.length >=
+          2 && (
+          <Polyline
+            positions={
+              validRoutePoints
+            }
+            pathOptions={{
+              color:
+                '#0F6B4D',
+              weight: 5,
+              opacity: 0.8,
+            }}
+          />
+        )}
 
         {validStops.map(
           (stop) => (
             <Marker
-              key={stop._id}
+              key={
+                stop._id
+              }
               position={[
                 Number(
                   stop.latitude
@@ -211,7 +288,7 @@ function TripMap({
             >
               <Popup>
                 <div className="min-w-[180px]">
-                  <p className="font-semibold">
+                  <p className="font-bold">
                     {stop.order}.{' '}
                     {
                       stop.placeName
@@ -219,7 +296,7 @@ function TripMap({
                   </p>
 
                   {stop.visitTime && (
-                    <p className="mt-1 text-sm">
+                    <p className="mt-1">
                       Visit time:{' '}
                       {
                         stop.visitTime
@@ -228,7 +305,7 @@ function TripMap({
                   )}
 
                   {stop.description && (
-                    <p className="mt-2 text-sm">
+                    <p className="mt-1">
                       {
                         stop.description
                       }
@@ -244,10 +321,10 @@ function TripMap({
       {validStops.length ===
         0 && (
         <div className="border-t border-[#DCE5E0] bg-[#F7FAF8] px-4 py-3 text-sm text-[#66756D]">
-          Add stops with
-          coordinates to this
-          day to display them
-          on the map.
+          Add destinations
+          with valid coordinates
+          to display them on
+          the map.
         </div>
       )}
     </div>
