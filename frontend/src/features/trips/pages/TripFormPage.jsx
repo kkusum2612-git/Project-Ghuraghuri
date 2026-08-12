@@ -236,10 +236,115 @@ function TripFormPage() {
 
     try {
       if (isEditMode) {
-        await updateTrip(
-          tripId,
-          payload
-        );
+        try {
+          await updateTrip(
+            tripId,
+            payload
+          );
+        } catch (error) {
+          const responseData =
+            error.response?.data;
+
+          const confirmationData =
+            responseData?.data;
+
+          const requiresConfirmation =
+            error.response?.status ===
+              409 &&
+            confirmationData
+              ?.requiresConfirmation ===
+              true;
+
+          if (
+            !requiresConfirmation
+          ) {
+            throw error;
+          }
+
+          const removedDays =
+            Array.isArray(
+              confirmationData
+                ?.removedDays
+            )
+              ? confirmationData
+                  .removedDays
+              : [];
+
+          const affectedDaysText =
+            removedDays
+              .map((day) => {
+                const stopCount =
+                  Number(
+                    day.stopCount
+                  ) || 0;
+
+                return (
+                  `Day ${day.dayNumber}: ` +
+                  `${stopCount} ` +
+                  `${
+                    stopCount === 1
+                      ? 'stop'
+                      : 'stops'
+                  }`
+                );
+              })
+              .join('\n');
+
+          const removedStopCount =
+            Number(
+              confirmationData
+                ?.removedStopCount
+            ) || 0;
+
+          const removedDayCount =
+            Number(
+              confirmationData
+                ?.removedDayCount
+            ) ||
+            removedDays.length;
+
+          const warningParts = [
+            'Shortening this trip will permanently remove itinerary data.',
+            '',
+            `Days to be removed: ${removedDayCount}`,
+          ];
+
+          if (
+            affectedDaysText
+          ) {
+            warningParts.push(
+              '',
+              affectedDaysText
+            );
+          }
+
+          warningParts.push(
+            '',
+            `Total stops to be removed: ${removedStopCount}`,
+            '',
+            'Do you want to continue?'
+          );
+
+          const confirmed =
+            window.confirm(
+              warningParts.join(
+                '\n'
+              )
+            );
+
+          if (!confirmed) {
+            return;
+          }
+
+          await updateTrip(
+            tripId,
+            {
+              ...payload,
+              confirmDayRemoval:
+                true,
+            }
+          );
+        }
       } else {
         await createTrip(
           payload
@@ -412,6 +517,7 @@ function TripFormPage() {
               className="mb-2 block text-sm font-semibold text-[#17211D]"
             >
               Cover Photo URL
+
               <span className="ml-1 font-normal text-[#7B8982]">
                 (Optional)
               </span>
