@@ -8,9 +8,11 @@ import {
 } from 'react-router-dom';
 
 import AddStopForm from '../components/AddStopForm';
+import EditStopForm from '../components/EditStopForm';
 import TripMap from '../components/TripMap';
 
 import {
+  deleteStop,
   getDayStops,
   getTripById,
   getTripDays,
@@ -67,6 +69,16 @@ function TripTourPlanPage() {
   const [
     pageError,
     setPageError,
+  ] = useState('');
+
+  const [
+    deletingStopId,
+    setDeletingStopId,
+  ] = useState('');
+
+  const [
+    editingStopId,
+    setEditingStopId,
   ] = useState('');
 
   useEffect(() => {
@@ -204,6 +216,73 @@ function TripTourPlanPage() {
     );
   }
 
+  function handleStopUpdated(
+    updatedStop
+  ) {
+    setStops(
+      (currentStops) =>
+        currentStops.map(
+          (stop) =>
+            stop._id ===
+            updatedStop._id
+              ? updatedStop
+              : stop
+        )
+    );
+
+    setEditingStopId('');
+  }
+
+  async function handleDeleteStop(
+    stop
+  ) {
+    const confirmed =
+      window.confirm(
+        `Delete "${stop.placeName}" from this day?`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingStopId(
+      stop._id
+    );
+
+    setEditingStopId('');
+    setPageError('');
+
+    try {
+      await deleteStop(
+        tripId,
+        selectedDayId,
+        stop._id
+      );
+
+      const result =
+        await getDayStops(
+          tripId,
+          selectedDayId
+        );
+
+      setStops(
+        Array.isArray(
+          result?.data?.stops
+        )
+          ? result.data.stops
+          : []
+      );
+    } catch (error) {
+      setPageError(
+        error.response?.data
+          ?.message ||
+          'Unable to delete the stop.'
+      );
+    } finally {
+      setDeletingStopId('');
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -276,11 +355,15 @@ function TripTourPlanPage() {
               <button
                 key={day._id}
                 type="button"
-                onClick={() =>
+                onClick={() => {
                   setSelectedDayId(
                     day._id
-                  )
-                }
+                  );
+
+                  setEditingStopId(
+                    ''
+                  );
+                }}
                 className={[
                   'rounded-lg border px-4 py-2.5 text-sm font-semibold transition',
                   isSelected
@@ -356,12 +439,56 @@ function TripTourPlanPage() {
                           }
                         </div>
 
-                        <div className="min-w-0">
-                          <h3 className="font-semibold text-[#17211D]">
-                            {
-                              stop.placeName
-                            }
-                          </h3>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <h3 className="font-semibold text-[#17211D]">
+                              {
+                                stop.placeName
+                              }
+                            </h3>
+
+                            <div className="flex shrink-0 gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingStopId(
+                                    (
+                                      currentId
+                                    ) =>
+                                      currentId ===
+                                      stop._id
+                                        ? ''
+                                        : stop._id
+                                  )
+                                }
+                                className="rounded-md border border-[#BCD6C9] px-2.5 py-1 text-xs font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2]"
+                              >
+                                {editingStopId ===
+                                stop._id
+                                  ? 'Close'
+                                  : 'Edit'}
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={
+                                  deletingStopId ===
+                                  stop._id
+                                }
+                                onClick={() =>
+                                  handleDeleteStop(
+                                    stop
+                                  )
+                                }
+                                className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {deletingStopId ===
+                                stop._id
+                                  ? 'Deleting...'
+                                  : 'Delete'}
+                              </button>
+                            </div>
+                          </div>
 
                           {stop.visitTime && (
                             <p className="mt-1 text-sm text-[#66756D]">
@@ -378,6 +505,29 @@ function TripTourPlanPage() {
                                 stop.description
                               }
                             </p>
+                          )}
+
+                          {editingStopId ===
+                            stop._id && (
+                            <EditStopForm
+                              tripId={
+                                tripId
+                              }
+                              dayId={
+                                selectedDayId
+                              }
+                              stop={
+                                stop
+                              }
+                              onStopUpdated={
+                                handleStopUpdated
+                              }
+                              onCancel={() =>
+                                setEditingStopId(
+                                  ''
+                                )
+                              }
+                            />
                           )}
                         </div>
                       </div>
