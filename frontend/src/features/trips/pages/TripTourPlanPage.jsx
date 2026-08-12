@@ -7,6 +7,7 @@ import {
   useParams,
 } from 'react-router-dom';
 
+import AddStopForm from '../components/AddStopForm';
 import TripMap from '../components/TripMap';
 
 import {
@@ -31,8 +32,7 @@ function formatDate(value) {
 }
 
 function TripTourPlanPage() {
-  const { tripId } =
-    useParams();
+  const { tripId } = useParams();
 
   const [
     trip,
@@ -184,6 +184,25 @@ function TripTourPlanPage() {
     tripId,
     selectedDayId,
   ]);
+
+  function handleStopAdded(
+    newStop
+  ) {
+    setStops(
+      (currentStops) =>
+        [
+          ...currentStops,
+          newStop,
+        ].sort(
+          (
+            first,
+            second
+          ) =>
+            first.order -
+            second.order
+        )
+    );
+  }
 
   if (isLoading) {
     return (
@@ -368,10 +387,20 @@ function TripTourPlanPage() {
               </div>
             )}
           </div>
+
+          <AddStopForm
+            tripId={tripId}
+            dayId={
+              selectedDayId
+            }
+            onStopAdded={
+              handleStopAdded
+            }
+          />
         </div>
 
         <TripMap
-        stops={stops}
+          stops={stops}
         />
       </section>
     </div>
