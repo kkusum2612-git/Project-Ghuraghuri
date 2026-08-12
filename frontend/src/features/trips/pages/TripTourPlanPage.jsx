@@ -16,6 +16,7 @@ import {
   getDayStops,
   getTripById,
   getTripDays,
+  reorderStops,
 } from '../api/tripApi';
 
 function formatDate(value) {
@@ -80,6 +81,16 @@ function TripTourPlanPage() {
     editingStopId,
     setEditingStopId,
   ] = useState('');
+
+  const [
+    draggingStopId,
+    setDraggingStopId,
+  ] = useState('');
+
+  const [
+    isReordering,
+    setIsReordering,
+  ] = useState(false);
 
   useEffect(() => {
     let ignoreResult = false;
@@ -233,6 +244,141 @@ function TripTourPlanPage() {
     setEditingStopId('');
   }
 
+  function handleDragStart(
+    event,
+    stopId
+  ) {
+    if (isReordering) {
+      event.preventDefault();
+      return;
+    }
+
+    event.dataTransfer.effectAllowed =
+      'move';
+
+    event.dataTransfer.setData(
+      'text/plain',
+      stopId
+    );
+
+    setDraggingStopId(
+      stopId
+    );
+
+    setEditingStopId('');
+  }
+
+  function handleDragEnd() {
+    setDraggingStopId('');
+  }
+
+  async function handleDrop(
+    event,
+    targetStopId
+  ) {
+    event.preventDefault();
+
+    if (
+      !draggingStopId ||
+      draggingStopId ===
+        targetStopId ||
+      isReordering
+    ) {
+      setDraggingStopId('');
+      return;
+    }
+
+    const previousStops = [
+      ...stops,
+    ];
+
+    const draggedIndex =
+      stops.findIndex(
+        (stop) =>
+          stop._id ===
+          draggingStopId
+      );
+
+    const targetIndex =
+      stops.findIndex(
+        (stop) =>
+          stop._id ===
+          targetStopId
+      );
+
+    if (
+      draggedIndex === -1 ||
+      targetIndex === -1
+    ) {
+      setDraggingStopId('');
+      return;
+    }
+
+    const reorderedStops = [
+      ...stops,
+    ];
+
+    const [
+      draggedStop,
+    ] = reorderedStops.splice(
+      draggedIndex,
+      1
+    );
+
+    reorderedStops.splice(
+      targetIndex,
+      0,
+      draggedStop
+    );
+
+    const locallyRenumbered =
+      reorderedStops.map(
+        (stop, index) => ({
+          ...stop,
+          order: index + 1,
+        })
+      );
+
+    setStops(
+      locallyRenumbered
+    );
+
+    setDraggingStopId('');
+    setIsReordering(true);
+    setPageError('');
+
+    try {
+      const result =
+        await reorderStops(
+          tripId,
+          selectedDayId,
+          locallyRenumbered.map(
+            (stop) => stop._id
+          )
+        );
+
+      setStops(
+        Array.isArray(
+          result?.data
+        )
+          ? result.data
+          : locallyRenumbered
+      );
+    } catch (error) {
+      setStops(
+        previousStops
+      );
+
+      setPageError(
+        error.response?.data
+          ?.message ||
+          'Unable to reorder the itinerary.'
+      );
+    } finally {
+      setIsReordering(false);
+    }
+  }
+
   async function handleDeleteStop(
     stop
   ) {
@@ -355,6 +501,9 @@ function TripTourPlanPage() {
               <button
                 key={day._id}
                 type="button"
+                disabled={
+                  isReordering
+                }
                 onClick={() => {
                   setSelectedDayId(
                     day._id
@@ -363,9 +512,13 @@ function TripTourPlanPage() {
                   setEditingStopId(
                     ''
                   );
+
+                  setDraggingStopId(
+                    ''
+                  );
                 }}
                 className={[
-                  'rounded-lg border px-4 py-2.5 text-sm font-semibold transition',
+                  'rounded-lg border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60',
                   isSelected
                     ? 'border-[#0F6B4D] bg-[#0F6B4D] text-white'
                     : 'border-[#DCE5E0] bg-white text-[#44524B] hover:bg-[#EEF7F2]',
@@ -380,7 +533,7 @@ function TripTourPlanPage() {
 
       <section className="mt-6 grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
         <div className="rounded-xl border border-[#DCE5E0] bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="font-bold text-[#17211D]">
                 Day{' '}
@@ -395,6 +548,13 @@ function TripTourPlanPage() {
                     )
                   : ''}
               </p>
+
+              {isReordering && (
+                <p className="mt-2 text-xs font-semibold text-[#0F6B4D]">
+                  Saving new
+                  order...
+                </p>
+              )}
             </div>
 
             <span className="rounded-full bg-[#EEF7F2] px-3 py-1 text-xs font-semibold text-[#0F6B4D]">
@@ -430,7 +590,51 @@ function TripTourPlanPage() {
                       key={
                         stop._id
                       }
-                      className="rounded-lg border border-[#E1E8E4] p-4"
+                      draggable={
+                        !isReordering &&
+                        !editingStopId &&
+                        deletingStopId !==
+                          stop._id
+                      }
+                      onDragStart={(
+                        event
+                      ) =>
+                        handleDragStart(
+                          event,
+                          stop._id
+                        )
+                      }
+                      onDragEnd={
+                        handleDragEnd
+                      }
+                      onDragOver={(
+                        event
+                      ) => {
+                        event.preventDefault();
+
+                        event.dataTransfer.dropEffect =
+                          'move';
+                      }}
+                      onDrop={(
+                        event
+                      ) =>
+                        void handleDrop(
+                          event,
+                          stop._id
+                        )
+                      }
+                      className={[
+                        'rounded-lg border p-4 transition',
+                        draggingStopId ===
+                        stop._id
+                          ? 'border-[#0F6B4D] bg-[#EEF7F2] opacity-60'
+                          : 'border-[#E1E8E4] bg-white',
+                        isReordering
+                          ? 'cursor-wait'
+                          : editingStopId
+                            ? 'cursor-default'
+                            : 'cursor-move',
+                      ].join(' ')}
                     >
                       <div className="flex gap-3">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0F6B4D] text-sm font-bold text-white">
@@ -440,6 +644,11 @@ function TripTourPlanPage() {
                         </div>
 
                         <div className="min-w-0 flex-1">
+                          <p className="mb-2 text-xs font-medium text-[#8A9891]">
+                            Drag to
+                            reorder
+                          </p>
+
                           <div className="flex items-start justify-between gap-3">
                             <h3 className="font-semibold text-[#17211D]">
                               {
@@ -450,6 +659,9 @@ function TripTourPlanPage() {
                             <div className="flex shrink-0 gap-2">
                               <button
                                 type="button"
+                                disabled={
+                                  isReordering
+                                }
                                 onClick={() =>
                                   setEditingStopId(
                                     (
@@ -461,7 +673,7 @@ function TripTourPlanPage() {
                                         : stop._id
                                   )
                                 }
-                                className="rounded-md border border-[#BCD6C9] px-2.5 py-1 text-xs font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2]"
+                                className="rounded-md border border-[#BCD6C9] px-2.5 py-1 text-xs font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2] disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {editingStopId ===
                                 stop._id
@@ -472,8 +684,9 @@ function TripTourPlanPage() {
                               <button
                                 type="button"
                                 disabled={
+                                  isReordering ||
                                   deletingStopId ===
-                                  stop._id
+                                    stop._id
                                 }
                                 onClick={() =>
                                   handleDeleteStop(
