@@ -24,6 +24,8 @@ import TripWorkspace from '../features/trips/components/TripWorkspace';
 import TripDashboardPage from '../features/trips/pages/TripDashboardPage';
 import TripFormPage from '../features/trips/pages/TripFormPage';
 
+import TripTourPlanPage from '../features/trips/pages/TripTourPlanPage';
+
 import MainLayout from '../layouts/MainLayout';
 
 import HomePage from '../pages/HomePage';
@@ -77,6 +79,12 @@ function AppRoutes() {
                   }
                 />
 
+                <Route
+                  path="/trips/:tripId/plan"
+                  element={
+                    <TripTourPlanPage />
+                  }
+                />
                 <Route
                   path="/trips/:tripId/edit"
                   element={

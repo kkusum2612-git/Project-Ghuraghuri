@@ -91,6 +91,13 @@ function TripDashboardPage() {
     navigate('/trips/new');
   }
 
+  function handleOpenTrip(
+    trip
+  ) {
+    navigate(
+      `/trips/${trip._id}/plan`
+    );
+  }
   function handleEditTrip(
     trip
   ) {
@@ -203,6 +210,10 @@ function TripDashboardPage() {
                 <TripCard
                   key={trip._id}
                   trip={trip}
+                  onOpen={
+                      handleOpenTrip
+                    }
+
                   onEdit={
                     handleEditTrip
                   }
