@@ -45,6 +45,7 @@ function calculateDays(
 
 function TripCard({
   trip,
+  onOpen,
   onEdit,
   onDelete,
   isDeleting,
@@ -59,6 +60,10 @@ function TripCard({
       trip.startDate,
       trip.endDate
     );
+
+    function handleOpen() {
+  onOpen(trip);
+}
 
   function handleEdit() {
     setIsMenuOpen(false);
@@ -161,13 +166,21 @@ function TripCard({
           </p>
         </div>
 
-        <div className="mt-4 border-t border-[#E5ECE8] pt-3">
+        <div className="mt-4 flex items-center justify-between gap-3 border-t border-[#E5ECE8] pt-3">
           <p className="text-sm font-semibold text-[#0F6B4D]">
             {tripDays}{' '}
             {tripDays === 1
               ? 'Day'
               : 'Days'}
           </p>
+
+          <button
+            type="button"
+            onClick={handleOpen}
+            className="rounded-lg bg-[#0F6B4D] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0A523B]"
+          >
+            View Tour Plan
+          </button>
         </div>
       </div>
     </article>
