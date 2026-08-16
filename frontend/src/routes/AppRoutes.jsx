@@ -18,6 +18,18 @@ import HotelFormPage from '../features/hotels/pages/HotelFormPage';
 import HotelSearchPage from '../features/hotels/pages/HotelSearchPage';
 import TravelerBookingsPage from '../features/hotels/pages/TravelerBookingsPage';
 
+// ============================================================
+// RAFI - PUBLIC EVENT ROOMS
+// ============================================================
+//
+// These pages belong to Rafi's Module 1 Feature 1.
+//
+// They are imported here because AppRoutes.jsx is the central
+// frontend route map for the entire Ghuraghuri application.
+import PublicRoomCreatePage from '../features/publicRooms/pages/PublicRoomCreatePage';
+import PublicRoomDetailsPage from '../features/publicRooms/pages/PublicRoomDetailsPage';
+import PublicRoomsPage from '../features/publicRooms/pages/PublicRoomsPage';
+
 import TravelerRoute from '../features/trips/components/TravelerRoute';
 import TripWorkspace from '../features/trips/components/TripWorkspace';
 
@@ -37,6 +49,11 @@ function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* MainLayout contains the global website structure,
+            including shared navigation.
+
+            Public Rooms should live inside this same structure,
+            not inside a separate standalone application. */}
         <Route element={<MainLayout />}>
           <Route
             path="/"
@@ -53,7 +70,9 @@ function AppRoutes() {
             element={<RegisterPage />}
           />
 
+          {/* Everything below this point requires login. */}
           <Route element={<ProtectedRoute />}>
+            {/* ---------------- ADMIN ---------------- */}
             <Route element={<AdminRoute />}>
               <Route
                 path="/admin"
@@ -63,8 +82,16 @@ function AppRoutes() {
               />
             </Route>
 
+            {/* --------------- TRAVELER --------------- */}
             <Route element={<TravelerRoute />}>
+              {/* TripWorkspace is the shared traveler sidebar
+                  and content area.
+
+                  Rafi's Event Rooms routes are intentionally
+                  placed HERE, beside Farhan's trips and
+                  Kusum's traveler hotel pages. */}
               <Route element={<TripWorkspace />}>
+                {/* Farhan - Trip Management */}
                 <Route
                   path="/trips"
                   element={
@@ -85,6 +112,7 @@ function AppRoutes() {
                     <TripTourPlanPage />
                   }
                 />
+
                 <Route
                   path="/trips/:tripId/edit"
                   element={
@@ -92,6 +120,7 @@ function AppRoutes() {
                   }
                 />
 
+                {/* Kusum - Traveler Hotel Search */}
                 <Route
                   path="/hotels"
                   element={
@@ -112,9 +141,43 @@ function AppRoutes() {
                     <TravelerBookingsPage />
                   }
                 />
+
+                {/* =====================================
+                    RAFI - PUBLIC EVENT ROOMS
+
+                    /event-rooms
+                    Main dashboard + discovery.
+
+                    /event-rooms/new
+                    Creation form.
+
+                    /event-rooms/:roomId
+                    Room details + Request to Join.
+                   ===================================== */}
+                <Route
+                  path="/event-rooms"
+                  element={
+                    <PublicRoomsPage />
+                  }
+                />
+
+                <Route
+                  path="/event-rooms/new"
+                  element={
+                    <PublicRoomCreatePage />
+                  }
+                />
+
+                <Route
+                  path="/event-rooms/:roomId"
+                  element={
+                    <PublicRoomDetailsPage />
+                  }
+                />
               </Route>
             </Route>
 
+            {/* ------------- HOTEL VENDOR ------------- */}
             <Route element={<HotelVendorRoute />}>
               <Route
                 element={
@@ -145,6 +208,8 @@ function AppRoutes() {
             </Route>
           </Route>
 
+          {/* Any unknown frontend URL reaches the existing
+              Not Found page. */}
           <Route
             path="*"
             element={
