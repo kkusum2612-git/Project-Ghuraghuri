@@ -63,6 +63,24 @@ async function getMyPublicRooms() {
 }
 
 // ------------------------------------------------------------
+// GET /api/v1/public-rooms/joined
+//
+// Returns rooms where the logged-in traveler is already an
+// accepted member but is not the room creator.
+//
+// These rooms are shown permanently under "Your Joined Rooms"
+// instead of depending on Discover search results.
+// ------------------------------------------------------------
+async function getJoinedPublicRooms() {
+  const response =
+    await apiClient.get(
+      '/public-rooms/joined'
+    );
+
+  return response.data;
+}
+
+// ------------------------------------------------------------
 // GET /api/v1/public-rooms
 //
 // Loads public rooms created by OTHER travelers.
@@ -230,6 +248,7 @@ async function rejectRoomJoinRequest(
 export {
   acceptRoomJoinRequest,
   createPublicRoom,
+  getJoinedPublicRooms,
   getMyPublicRooms,
   getPublicRoomById,
   getPublicRooms,

@@ -5,6 +5,7 @@ import {
 import {
   acceptJoinRequest,
   createPublicRoom,
+  getJoinedPublicRooms,
   getMyPublicRooms,
   getPendingJoinRequests,
   getPublicRoomById,
@@ -75,6 +76,21 @@ router.get(
   '/mine',
   ...travelerPublicRoomProtection,
   getMyPublicRooms
+);
+
+// ------------------------------------------------------------
+// GET /api/v1/public-rooms/joined
+//
+// Returns rooms where the logged-in traveler is already an
+// accepted member but is NOT the room creator.
+//
+// These rooms appear permanently under "Your Joined Rooms"
+// instead of depending on Discover search/filter results.
+// ------------------------------------------------------------
+router.get(
+  '/joined',
+  ...travelerPublicRoomProtection,
+  getJoinedPublicRooms
 );
 
 // ------------------------------------------------------------

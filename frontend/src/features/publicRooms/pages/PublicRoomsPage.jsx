@@ -8,6 +8,7 @@ import {
 } from 'react-router-dom';
 
 import {
+  getJoinedPublicRooms,
   getMyPublicRooms,
   getPublicRooms,
 } from '../api/publicRoomApi';
@@ -118,6 +119,18 @@ function PublicRoomsPage() {
     setMyRooms,
   ] = useState([]);
 
+  // Rooms that this traveler did NOT create, but has already
+  // joined after the room creator accepted their request.
+  //
+  // These rooms are kept separate from Discover Public Rooms.
+  //
+  // That means search filters cannot accidentally hide a room
+  // that the traveler is already a member of.
+  const [
+   joinedRooms,
+   setJoinedRooms,
+  ] = useState([]);
+
   // Public rooms created by other travelers.
   const [
     publicRooms,
@@ -188,10 +201,16 @@ function PublicRoomsPage() {
   //
   // useEffect runs after the component first appears.
   //
-  // We load two sets of information:
+  // We load three independent sets of information:
   //
   // 1. rooms created by this traveler
-  // 2. rooms created by other travelers
+  // 2. rooms this traveler has already joined
+  // 3. discoverable rooms they have not joined yet
+  //
+  // Joined rooms deliberately have their own API request.
+  //
+  // This is what makes accepted rooms stay permanently visible
+  // instead of depending on the Discover search/filter state.
   //
   // Promise.all lets those two independent API requests happen
   // at the same time instead of waiting for one before starting
@@ -207,11 +226,13 @@ function PublicRoomsPage() {
       try {
         const [
           myRoomsResult,
+          joinedRoomsResult,
           publicRoomsResult,
         ] = await Promise.all([
           getMyPublicRooms(),
+          getJoinedPublicRooms(),
           getPublicRooms(),
-        ]);
+    ]);
 
         // React may remove this page before the requests finish.
         //
@@ -226,6 +247,14 @@ function PublicRoomsPage() {
             myRoomsResult?.data
           )
             ? myRoomsResult.data
+            : []
+        );
+
+        setJoinedRooms(
+          Array.isArray(
+            joinedRoomsResult?.data
+          )
+            ? joinedRoomsResult.data
             : []
         );
 
@@ -770,6 +799,234 @@ function PublicRoomsPage() {
                       className="mt-5 w-full rounded-lg border border-[#0F6B4D] px-4 py-2.5 text-sm font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2]"
                     >
                       View Room
+                    </button>
+                  </div>
+                </article>
+              )
+            )}
+          </div>
+        )}
+      </section>
+
+            {/* =====================================================
+          YOUR JOINED ROOMS
+         =====================================================
+
+          These are rooms created by OTHER travelers where the
+          logged-in traveler has already been accepted.
+
+          This section is intentionally independent from
+          Discover Public Rooms.
+
+          Therefore:
+          - searching does not hide joined rooms
+          - resetting filters does not affect joined rooms
+          - a full room still remains visible to its members
+          - a room that later stops accepting requests can
+            still remain accessible to existing members
+
+          PublicRoom.members is the backend source of truth.
+         ===================================================== */}
+      <section className="mt-10">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-[#17211D]">
+              Your Joined Rooms
+            </h2>
+
+            <p className="mt-1 text-sm text-[#66756D]">
+              Rooms where another
+              traveler is the creator
+              and you are an accepted
+              member.
+            </p>
+          </div>
+
+          {/* This gives the traveler a quick indication of how
+              many rooms they currently belong to. */}
+          {joinedRooms.length > 0 && (
+            <span className="w-fit rounded-full bg-[#EEF7F2] px-3 py-1.5 text-xs font-bold text-[#0F6B4D]">
+              {joinedRooms.length}{' '}
+              Joined
+            </span>
+          )}
+        </div>
+
+        {joinedRooms.length === 0 ? (
+          // --------------------------------------------------
+          // EMPTY STATE
+          // --------------------------------------------------
+          //
+          // This is not an error.
+          //
+          // It simply means the traveler has not yet had a
+          // join request accepted by another room creator.
+          <div className="rounded-xl border border-dashed border-[#C9D7D0] bg-white px-6 py-8 text-center">
+            <h3 className="text-base font-bold text-[#17211D]">
+              You have not joined
+              any rooms yet
+            </h3>
+
+            <p className="mx-auto mt-2 max-w-lg text-sm text-[#66756D]">
+              Browse public rooms
+              below, send a join
+              request, and accepted
+              rooms will stay pinned
+              here for easy access.
+            </p>
+
+            <button
+              type="button"
+              onClick={
+                handleBrowseRooms
+              }
+              className="mt-4 rounded-lg border border-[#0F6B4D] bg-white px-5 py-2.5 text-sm font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2]"
+            >
+              Browse Public Rooms
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {joinedRooms.map(
+              (room) => (
+                <article
+                  key={room._id}
+                  className="overflow-hidden rounded-xl border border-[#BFDCCA] bg-white shadow-sm"
+                >
+                  {/* Joined rooms use the same room cover style
+                      as the other Event Room cards.
+
+                      Keeping the visual structure consistent
+                      makes the dashboard easier to understand. */}
+                  <div className="relative h-40 bg-[#E8F1EC]">
+                    {room.coverPhoto && (
+                      <img
+                        src={
+                          room.coverPhoto
+                        }
+                        alt={`${room.roomName} cover`}
+                        className="h-full w-full object-cover"
+                        onError={(
+                          event
+                        ) => {
+                          // If a remote cover image becomes
+                          // invalid, hide the broken image.
+                          //
+                          // The neutral background remains.
+                          event.currentTarget.style.display =
+                            'none';
+                        }}
+                      />
+                    )}
+
+                    {/* This badge explains why this room stays
+                        pinned separately from Discover. */}
+                    <span className="absolute right-3 top-3 rounded-full bg-white/95 px-3 py-1 text-xs font-bold text-[#0F6B4D] shadow-sm">
+                      Member
+                    </span>
+                  </div>
+
+                  <div className="p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="truncate text-lg font-bold text-[#17211D]">
+                          {
+                            room.roomName
+                          }
+                        </h3>
+
+                        <p className="mt-1 text-sm font-medium text-[#0F6B4D]">
+                          {
+                            room.destination
+                          }
+                        </p>
+                      </div>
+
+                      <span className="shrink-0 rounded-full bg-[#EEF7F2] px-3 py-1 text-xs font-semibold capitalize text-[#0F6B4D]">
+                        {
+                          room.status
+                        }
+                      </span>
+                    </div>
+
+                    <div className="mt-4 space-y-2 text-sm text-[#66756D]">
+                      <p>
+                        <span className="font-semibold text-[#44524B]">
+                          Dates:
+                        </span>{' '}
+                        {formatDate(
+                          room.startDate
+                        )}{' '}
+                        -{' '}
+                        {formatDate(
+                          room.endDate
+                        )}
+                      </p>
+
+                      <p>
+                        <span className="font-semibold text-[#44524B]">
+                          Budget:
+                        </span>{' '}
+                        {formatMoney(
+                          room.estimatedBudget
+                        )}
+                      </p>
+
+                      <p>
+                        <span className="font-semibold text-[#44524B]">
+                          Members:
+                        </span>{' '}
+                        {getMemberCount(
+                          room
+                        )}
+                        /
+                        {
+                          room.maxMembers
+                        }
+                      </p>
+
+                      <p>
+                        <span className="font-semibold text-[#44524B]">
+                          Creator:
+                        </span>{' '}
+                        {room.creator
+                          ?.name ||
+                          'Traveler'}
+                      </p>
+                    </div>
+
+                    {/* Keep the existing interest-tag visual
+                        language from Created and Discover cards. */}
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {room.interestTags?.map(
+                        (tag) => (
+                          <span
+                            key={
+                              tag
+                            }
+                            className="rounded-full bg-[#EEF7F2] px-3 py-1 text-xs font-medium text-[#0F6B4D]"
+                          >
+                            {tag}
+                          </span>
+                        )
+                      )}
+                    </div>
+
+                    {/* A joined room is already part of the
+                        traveler's room workspace.
+
+                        Therefore we call this "Open Room"
+                        instead of asking them to join again. */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleViewRoom(
+                          room
+                        )
+                      }
+                      className="mt-5 w-full rounded-lg bg-[#0F6B4D] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0A523B]"
+                    >
+                      Open Room
                     </button>
                   </div>
                 </article>
