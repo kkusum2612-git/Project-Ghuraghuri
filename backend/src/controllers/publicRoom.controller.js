@@ -561,6 +561,11 @@ async function getPublicRooms(
         $ne:
           req.user._id,
       },
+
+      members: {
+        $ne:
+          req.user._id,
+      },
     };
 
     // ----------------------------
@@ -1743,9 +1748,94 @@ async function rejectJoinRequest(
   }
 }
 
+// ============================================================
+// GET ROOMS JOINED BY THE LOGGED-IN TRAVELER
+// ============================================================
+//
+// A traveler may discover a room, send a join request, and
+// later be accepted by the room creator.
+//
+// Once accepted, their User ID is added to:
+//
+// PublicRoom.members
+//
+// That membership should make the room permanently easy to
+// access from the Event Rooms dashboard.
+//
+// This endpoint therefore returns rooms where:
+//
+// 1. The logged-in traveler is already inside room.members.
+// 2. The traveler is NOT the creator.
+//
+// Creator-owned rooms already appear separately under
+// "Your Created Rooms", so we avoid showing duplicates here.
+//
+// IMPORTANT:
+// We intentionally do NOT require:
+//
+// status: 'open'
+//
+// A room may become full or later stop accepting new members,
+// but existing accepted members should still be able to find
+// and access that room.
+async function getJoinedPublicRooms(
+  req,
+  res,
+  next
+) {
+  try {
+    const joinedRooms =
+      await PublicRoom.find({
+        members:
+          req.user._id,
+
+        creator: {
+          $ne:
+            req.user._id,
+        },
+      })
+        // We populate the creator so the joined-room card can
+        // show who owns the room.
+        .populate(
+          'creator',
+          'name profileImageUrl'
+        )
+
+        // Populate all accepted/current members so the
+        // frontend can display the real member count.
+        .populate(
+          'members',
+          'name profileImageUrl'
+        )
+
+        // Upcoming trips are generally more useful first.
+        .sort({
+          startDate: 1,
+          createdAt: -1,
+        })
+
+        .lean();
+
+    return res
+      .status(200)
+      .json({
+        success: true,
+
+        message:
+          'Joined public rooms loaded successfully.',
+
+        data:
+          joinedRooms,
+      });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 export {
   acceptJoinRequest,
   createPublicRoom,
+  getJoinedPublicRooms,
   getMyPublicRooms,
   getPendingJoinRequests,
   getPublicRoomById,
