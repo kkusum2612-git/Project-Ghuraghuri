@@ -166,10 +166,74 @@ async function requestToJoinRoom(
   return response.data;
 }
 
+// ------------------------------------------------------------
+// GET /api/v1/public-rooms/:roomId/join-requests
+//
+// Creator-only endpoint.
+//
+// Loads all pending requests for one room.
+//
+// The backend performs the real ownership check, so simply
+// calling this function does NOT automatically grant access.
+// ------------------------------------------------------------
+async function getRoomJoinRequests(
+  roomId
+) {
+  const response = await apiClient.get(
+    `/public-rooms/${roomId}/join-requests`
+  );
+
+  return response.data;
+}
+
+// ------------------------------------------------------------
+// PATCH
+// /api/v1/public-rooms/:roomId/join-requests/:requestId/accept
+//
+// Accepts a pending applicant.
+//
+// Backend result includes the updated PublicRoom so the
+// frontend can immediately refresh its member list.
+// ------------------------------------------------------------
+async function acceptRoomJoinRequest(
+  roomId,
+  requestId
+) {
+  const response =
+    await apiClient.patch(
+      `/public-rooms/${roomId}/join-requests/${requestId}/accept`
+    );
+
+  return response.data;
+}
+
+// ------------------------------------------------------------
+// PATCH
+// /api/v1/public-rooms/:roomId/join-requests/:requestId/reject
+//
+// Rejects the selected request.
+//
+// The traveler is not added to PublicRoom.members.
+// ------------------------------------------------------------
+async function rejectRoomJoinRequest(
+  roomId,
+  requestId
+) {
+  const response =
+    await apiClient.patch(
+      `/public-rooms/${roomId}/join-requests/${requestId}/reject`
+    );
+
+  return response.data;
+}
+
 export {
+  acceptRoomJoinRequest,
   createPublicRoom,
   getMyPublicRooms,
   getPublicRoomById,
   getPublicRooms,
+  getRoomJoinRequests,
+  rejectRoomJoinRequest,
   requestToJoinRoom,
 };

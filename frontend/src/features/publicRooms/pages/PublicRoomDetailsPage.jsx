@@ -9,11 +9,33 @@ import {
 } from 'react-router-dom';
 
 import {
+  acceptRoomJoinRequest,
   getPublicRoomById,
+  getRoomJoinRequests,
+  rejectRoomJoinRequest,
   requestToJoinRoom,
 } from '../api/publicRoomApi';
 
-// Format a stored date for human-friendly display.
+// ============================================================
+// SMALL DISPLAY HELPER FUNCTIONS
+// ============================================================
+//
+// These functions only change how stored information LOOKS
+// on the screen.
+//
+// They do not modify anything in MongoDB.
+
+/**
+ * Converts a stored date into something easier to read.
+ *
+ * Example:
+ *
+ * 2026-09-10T00:00:00.000Z
+ *
+ * becomes:
+ *
+ * 10 September 2026
+ */
 function formatDate(value) {
   if (!value) {
     return 'Date unavailable';
@@ -21,6 +43,8 @@ function formatDate(value) {
 
   const date = new Date(value);
 
+  // An invalid date object still exists in JavaScript,
+  // but its timestamp becomes NaN.
   if (
     Number.isNaN(
       date.getTime()
@@ -39,7 +63,17 @@ function formatDate(value) {
   );
 }
 
-// Format the room's estimated budget as Bangladeshi Taka.
+/**
+ * Displays the budget using Bangladeshi Taka.
+ *
+ * Example:
+ *
+ * 12000
+ *
+ * becomes:
+ *
+ * ৳12,000
+ */
 function formatMoney(value) {
   const amount = Number(value);
 
@@ -52,20 +86,63 @@ function formatMoney(value) {
   return `৳${amount.toLocaleString()}`;
 }
 
+/**
+ * Formats the date/time when somebody sent a join request.
+ *
+ * This is useful to the room creator because they can see
+ * when each applicant requested membership.
+ */
+function formatRequestTime(value) {
+  if (!value) {
+    return 'Request time unavailable';
+  }
+
+  const date = new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return 'Request time unavailable';
+  }
+
+  return date.toLocaleString(
+    'en-GB',
+    {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }
+  );
+}
+
+// ============================================================
+// PAGE COMPONENT
+// ============================================================
+
 function PublicRoomDetailsPage() {
-  // roomId comes from the URL:
+  // roomId comes from the dynamic URL:
   //
   // /event-rooms/:roomId
   //
   // Example:
   //
-  // /event-rooms/66c123...
+  // /event-rooms/66c123abc...
   const {
     roomId,
   } = useParams();
 
+  // useNavigate lets us move to another React route
+  // from JavaScript.
   const navigate =
     useNavigate();
+
+  // ==========================================================
+  // ROOM DATA
+  // ==========================================================
 
   const [
     room,
@@ -74,17 +151,50 @@ function PublicRoomDetailsPage() {
 
   // viewerStatus is calculated by the BACKEND.
   //
-  // Possible examples:
+  // Possible values include:
   //
   // creator
   // member
   // pending
+  // accepted
   // rejected
   // none
+  //
+  // This is safer than asking React to guess permissions
+  // only from what it currently knows.
   const [
     viewerStatus,
     setViewerStatus,
   ] = useState('none');
+
+  // ==========================================================
+  // FEATURE 2 - JOIN REQUEST DATA
+  // ==========================================================
+  //
+  // Only a room creator should ever receive pending requests.
+  //
+  // The backend enforces that security rule.
+  //
+  // React merely stores the successful response here so the
+  // creator can see the management panel.
+
+  const [
+    joinRequests,
+    setJoinRequests,
+  ] = useState([]);
+
+  // When accepting/rejecting one request, we remember its ID.
+  //
+  // This allows us to disable only the request currently being
+  // processed rather than disabling the whole page.
+  const [
+    processingRequestId,
+    setProcessingRequestId,
+  ] = useState('');
+
+  // ==========================================================
+  // PAGE STATE
+  // ==========================================================
 
   const [
     isLoading,
@@ -109,6 +219,13 @@ function PublicRoomDetailsPage() {
   // ==========================================================
   // LOAD ROOM DETAILS
   // ==========================================================
+  //
+  // This runs when the page first opens.
+  //
+  // It always loads the selected room.
+  //
+  // If the backend tells us that the current user is the room
+  // creator, we ALSO load that room's pending join requests.
 
   useEffect(() => {
     let ignoreResult = false;
@@ -116,8 +233,15 @@ function PublicRoomDetailsPage() {
     async function loadRoom() {
       setIsLoading(true);
       setPageError('');
+      setSuccessMessage('');
 
       try {
+        // ----------------------------------------------------
+        // STEP 1:
+        // Load the room and determine the current user's
+        // relationship with it.
+        // ----------------------------------------------------
+
         const result =
           await getPublicRoomById(
             roomId
@@ -127,16 +251,64 @@ function PublicRoomDetailsPage() {
           return;
         }
 
-        setRoom(
+        const loadedRoom =
           result?.data?.room ||
-            null
+          null;
+
+        const loadedViewerStatus =
+          result?.data
+            ?.viewerStatus ||
+          'none';
+
+        setRoom(
+          loadedRoom
         );
 
         setViewerStatus(
-          result?.data
-            ?.viewerStatus ||
-            'none'
+          loadedViewerStatus
         );
+
+        // ----------------------------------------------------
+        // STEP 2:
+        // Only the CREATOR needs the request-management data.
+        // ----------------------------------------------------
+        //
+        // We deliberately do not call this API for:
+        //
+        // members
+        // pending users
+        // outsiders
+        //
+        // Even if somebody manually called it themselves,
+        // the backend would still return 403 unless they own
+        // this room.
+
+        if (
+          loadedViewerStatus ===
+          'creator'
+        ) {
+          const requestsResult =
+            await getRoomJoinRequests(
+              roomId
+            );
+
+          if (ignoreResult) {
+            return;
+          }
+
+          setJoinRequests(
+            Array.isArray(
+              requestsResult
+                ?.data
+            )
+              ? requestsResult.data
+              : []
+          );
+        } else {
+          // If the current person is not the creator,
+          // there is no request-management list to show.
+          setJoinRequests([]);
+        }
       } catch (error) {
         if (!ignoreResult) {
           setPageError(
@@ -154,14 +326,19 @@ function PublicRoomDetailsPage() {
 
     void loadRoom();
 
+    // React calls this cleanup function if the user leaves
+    // the page before our API requests finish.
     return () => {
       ignoreResult = true;
     };
   }, [roomId]);
 
   // ==========================================================
-  // JOIN REQUEST
+  // FEATURE 1 - SEND JOIN REQUEST
   // ==========================================================
+  //
+  // This remains the behavior for another traveler who has
+  // discovered the room but is not yet a member.
 
   async function handleJoinRequest() {
     setPageError('');
@@ -174,10 +351,12 @@ function PublicRoomDetailsPage() {
           roomId
         );
 
-      // Once the backend successfully creates the request,
-      // update the UI immediately.
+      // The backend successfully created a JoinRequest with:
       //
-      // We do not need another complete page refresh.
+      // status: "pending"
+      //
+      // We update React immediately so the button disappears
+      // without requiring a page refresh.
       setViewerStatus(
         'pending'
       );
@@ -198,7 +377,145 @@ function PublicRoomDetailsPage() {
   }
 
   // ==========================================================
-  // LOADING / ERROR STATES
+  // FEATURE 2 - ACCEPT JOIN REQUEST
+  // ==========================================================
+  //
+  // This function is only connected to buttons shown to
+  // the creator.
+  //
+  // But remember:
+  //
+  // Hiding buttons is NOT our real security.
+  //
+  // The backend independently verifies room ownership before
+  // accepting anything.
+
+  async function handleAcceptRequest(
+    requestId
+  ) {
+    setPageError('');
+    setSuccessMessage('');
+
+    // Remember which specific request is being processed.
+    setProcessingRequestId(
+      requestId
+    );
+
+    try {
+      const result =
+        await acceptRoomJoinRequest(
+          roomId,
+          requestId
+        );
+
+      // The accept API returns the UPDATED PublicRoom.
+      //
+      // That room already contains the newly accepted traveler
+      // inside its members array.
+      //
+      // Updating this state makes the new member appear under
+      // "Current Members" immediately.
+      const updatedRoom =
+        result?.data?.room;
+
+      if (updatedRoom) {
+        setRoom(
+          updatedRoom
+        );
+      }
+
+      // The request is no longer pending.
+      //
+      // Therefore remove it from the creator's pending list.
+      setJoinRequests(
+        (currentRequests) =>
+          currentRequests.filter(
+            (request) =>
+              request._id !==
+              requestId
+          )
+      );
+
+      setSuccessMessage(
+        result?.message ||
+          'Join request accepted successfully.'
+      );
+    } catch (error) {
+      setPageError(
+        error.response?.data
+          ?.message ||
+          'Unable to accept the join request.'
+      );
+    } finally {
+      setProcessingRequestId(
+        ''
+      );
+    }
+  }
+
+  // ==========================================================
+  // FEATURE 2 - REJECT JOIN REQUEST
+  // ==========================================================
+  //
+  // Rejecting changes the JoinRequest from:
+  //
+  // pending
+  //
+  // to:
+  //
+  // rejected
+  //
+  // The applicant is NOT added to room.members.
+
+  async function handleRejectRequest(
+    requestId
+  ) {
+    setPageError('');
+    setSuccessMessage('');
+
+    setProcessingRequestId(
+      requestId
+    );
+
+    try {
+      const result =
+        await rejectRoomJoinRequest(
+          roomId,
+          requestId
+        );
+
+      // A rejected request is no longer pending, so remove it
+      // from the management list.
+      //
+      // Notice that we do NOT modify room.members here.
+      setJoinRequests(
+        (currentRequests) =>
+          currentRequests.filter(
+            (request) =>
+              request._id !==
+              requestId
+          )
+      );
+
+      setSuccessMessage(
+        result?.message ||
+          'Join request rejected successfully.'
+      );
+    } catch (error) {
+      setPageError(
+        error.response?.data
+          ?.message ||
+          'Unable to reject the join request.'
+      );
+    } finally {
+      setProcessingRequestId(
+        ''
+      );
+    }
+  }
+
+  // ==========================================================
+  // LOADING STATE
   // ==========================================================
 
   if (isLoading) {
@@ -210,6 +527,10 @@ function PublicRoomDetailsPage() {
       </div>
     );
   }
+
+  // ==========================================================
+  // ROOM-NOT-FOUND / LOAD-ERROR STATE
+  // ==========================================================
 
   if (!room) {
     return (
@@ -234,6 +555,13 @@ function PublicRoomDetailsPage() {
     );
   }
 
+  // ==========================================================
+  // DERIVED VALUES
+  // ==========================================================
+  //
+  // These values can be calculated from the room instead of
+  // being stored separately in React state.
+
   const memberCount =
     Array.isArray(
       room.members
@@ -245,12 +573,20 @@ function PublicRoomDetailsPage() {
     memberCount >=
     room.maxMembers;
 
+  const isCreator =
+    viewerStatus ===
+    'creator';
+
   // ==========================================================
   // PAGE UI
   // ==========================================================
 
   return (
     <div className="mx-auto max-w-6xl">
+      {/* =====================================================
+          BACK BUTTON
+         ===================================================== */}
+
       <button
         type="button"
         onClick={() =>
@@ -266,29 +602,34 @@ function PublicRoomDetailsPage() {
       {/* =====================================================
           ROOM HERO / HEADER
 
-          This is inspired by your second Figma screen.
-
-          We show only real Feature-1 information instead of
-          adding dead controls for future features.
+          This keeps the Figma-inspired room workspace look.
          ===================================================== */}
+
       <section className="overflow-hidden rounded-xl border border-[#DCE5E0] bg-white shadow-sm">
         <div className="relative min-h-56 bg-[#DDEBE4] md:min-h-72">
           {room.coverPhoto && (
             <img
-              src={room.coverPhoto}
+              src={
+                room.coverPhoto
+              }
               alt={`${room.roomName} cover`}
               className="absolute inset-0 h-full w-full object-cover"
               onError={(
                 event
               ) => {
+                // If an external image URL becomes invalid,
+                // hide the broken image.
+                //
+                // The neutral green background underneath will
+                // remain visible instead.
                 event.currentTarget.style.display =
                   'none';
               }}
             />
           )}
 
-          {/* Dark transparent layer helps white text remain
-              readable on bright photographs. */}
+          {/* A transparent dark layer improves white-text
+              readability over bright photographs. */}
           <div className="absolute inset-0 bg-black/35" />
 
           <div className="relative flex min-h-56 flex-col justify-end p-6 text-white md:min-h-72 md:p-8">
@@ -302,14 +643,18 @@ function PublicRoomDetailsPage() {
               </h1>
 
               <p className="mt-2 text-base font-medium text-white/90">
-                {room.destination}
+                {
+                  room.destination
+                }
               </p>
             </div>
           </div>
         </div>
 
-        {/* Important information directly under the hero,
-            similar to the information strip in the Figma. */}
+        {/* ===================================================
+            QUICK ROOM INFORMATION
+           =================================================== */}
+
         <div className="grid gap-px bg-[#E1E8E4] sm:grid-cols-2 xl:grid-cols-4">
           <div className="bg-white p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#7A8780]">
@@ -366,6 +711,10 @@ function PublicRoomDetailsPage() {
         </div>
       </section>
 
+      {/* =====================================================
+          PAGE MESSAGES
+         ===================================================== */}
+
       {pageError && (
         <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {pageError}
@@ -378,11 +727,20 @@ function PublicRoomDetailsPage() {
         </div>
       )}
 
+      {/* =====================================================
+          MAIN WORKSPACE CONTENT
+         ===================================================== */}
+
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         {/* ===================================================
-            LEFT SIDE: OVERVIEW
+            LEFT COLUMN
            =================================================== */}
+
         <div className="space-y-6">
+          {/* =================================================
+              OVERVIEW
+             ================================================= */}
+
           <section className="rounded-xl border border-[#DCE5E0] bg-white p-6 shadow-sm">
             <h2 className="text-xl font-bold text-[#17211D]">
               About This Room
@@ -421,14 +779,209 @@ function PublicRoomDetailsPage() {
           </section>
 
           {/* =================================================
+              FEATURE 2 - JOIN REQUEST MANAGEMENT
+
+              IMPORTANT:
+
+              Only the creator sees this entire section.
+
+              Accepted members will NOT see Accept/Reject
+              controls.
+
+              The backend independently enforces the same rule.
+             ================================================= */}
+
+          {isCreator && (
+            <section className="rounded-xl border border-[#DCE5E0] bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-[#17211D]">
+                    Join Requests
+                  </h2>
+
+                  <p className="mt-1 text-sm text-[#66756D]">
+                    Review travelers
+                    who want to join
+                    your room.
+                  </p>
+                </div>
+
+                {/* This count is based on the real current
+                    pending-request array. */}
+                <span className="w-fit rounded-full bg-[#EEF7F2] px-3 py-1.5 text-xs font-bold text-[#0F6B4D]">
+                  {
+                    joinRequests.length
+                  }{' '}
+                  Pending
+                </span>
+              </div>
+
+              {joinRequests.length ===
+              0 ? (
+                // ------------------------------------------------
+                // EMPTY STATE
+                // ------------------------------------------------
+                //
+                // No pending requests is a normal situation,
+                // not an error.
+
+                <div className="mt-5 rounded-lg border border-dashed border-[#C9D7D0] bg-[#F7FAF8] px-5 py-8 text-center">
+                  <p className="text-sm font-semibold text-[#44524B]">
+                    No pending join
+                    requests
+                  </p>
+
+                  <p className="mt-1 text-xs text-[#7A8780]">
+                    New requests from
+                    travelers will
+                    appear here.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-5 space-y-3">
+                  {joinRequests.map(
+                    (request) => {
+                      // "requester" was populated by the
+                      // backend JoinRequest query.
+                      const applicant =
+                        request.requester;
+
+                      const isProcessing =
+                        processingRequestId ===
+                        request._id;
+
+                      return (
+                        <article
+                          key={
+                            request._id
+                          }
+                          className="rounded-lg border border-[#E1E8E4] p-4"
+                        >
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                            {/* ===============================
+                                APPLICANT BASIC PROFILE
+                               =============================== */}
+
+                            <div className="flex min-w-0 items-center gap-3">
+                              {applicant?.profileImageUrl ? (
+                                <img
+                                  src={
+                                    applicant.profileImageUrl
+                                  }
+                                  alt={
+                                    applicant.name ||
+                                    'Traveler'
+                                  }
+                                  className="h-12 w-12 shrink-0 rounded-full object-cover"
+                                />
+                              ) : (
+                                // If no profile photo exists,
+                                // display the first letter of
+                                // the traveler's name.
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#DCEFE4] text-base font-bold text-[#0F6B4D]">
+                                  {applicant?.name
+                                    ?.charAt(
+                                      0
+                                    )
+                                    ?.toUpperCase() ||
+                                    'T'}
+                                </div>
+                              )}
+
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold text-[#17211D]">
+                                  {applicant?.name ||
+                                    'Traveler'}
+                                </p>
+
+                                {/* Email counts as useful basic
+                                    profile information for the
+                                    creator.
+
+                                    The backend intentionally
+                                    selects only safe profile
+                                    fields instead of exposing
+                                    the whole User document. */}
+                                <p className="truncate text-xs text-[#66756D]">
+                                  {applicant?.email ||
+                                    'Email unavailable'}
+                                </p>
+
+                                <p className="mt-1 text-xs text-[#8A9690]">
+                                  Requested{' '}
+                                  {formatRequestTime(
+                                    request.createdAt
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* ===============================
+                                ACCEPT / REJECT ACTIONS
+                               =============================== */}
+
+                            <div className="flex shrink-0 gap-2">
+                              <button
+                                type="button"
+                                disabled={
+                                  isProcessing
+                                }
+                                onClick={() =>
+                                  handleRejectRequest(
+                                    request._id
+                                  )
+                                }
+                                className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {isProcessing
+                                  ? 'Processing...'
+                                  : 'Reject'}
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={
+                                  isProcessing ||
+                                  roomIsFull
+                                }
+                                onClick={() =>
+                                  handleAcceptRequest(
+                                    request._id
+                                  )
+                                }
+                                className="rounded-lg bg-[#0F6B4D] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0A523B] disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {isProcessing
+                                  ? 'Processing...'
+                                  : roomIsFull
+                                    ? 'Room Full'
+                                    : 'Accept'}
+                              </button>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* =================================================
               CURRENT MEMBERS
 
-              Feature 1 requires the room detail page to show
-              current members.
+              Everyone who can currently see this page sees
+              the room's existing members.
 
-              Feature 2 will later add creator controls for
-              accepting/rejecting applicants.
+              Later, once we create the private member
+              workspace permissions, accepted members will use
+              this membership to gain read-only access to:
+              - itinerary
+              - map
+              - expenses
              ================================================= */}
+
           <section className="rounded-xl border border-[#DCE5E0] bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -452,65 +1005,62 @@ function PublicRoomDetailsPage() {
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               {room.members?.map(
-                (member) => (
-                  <div
-                    key={
-                      member._id
-                    }
-                    className="flex items-center gap-3 rounded-lg border border-[#E1E8E4] p-3"
-                  >
-                    {/* Use profile photo when available.
+                (member) => {
+                  const memberIsCreator =
+                    member._id ===
+                    room.creator?._id;
 
-                        Otherwise show the first letter of the
-                        member's name, which matches the style
-                        already used in TripWorkspace. */}
-                    {member.profileImageUrl ? (
-                      <img
-                        src={
-                          member.profileImageUrl
-                        }
-                        alt={
-                          member.name
-                        }
-                        className="h-10 w-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#DCEFE4] text-sm font-bold text-[#0F6B4D]">
-                        {member.name
-                          ?.charAt(0)
-                          ?.toUpperCase() ||
-                          'T'}
+                  return (
+                    <div
+                      key={
+                        member._id
+                      }
+                      className="flex items-center gap-3 rounded-lg border border-[#E1E8E4] p-3"
+                    >
+                      {member.profileImageUrl ? (
+                        <img
+                          src={
+                            member.profileImageUrl
+                          }
+                          alt={
+                            member.name ||
+                            'Traveler'
+                          }
+                          className="h-10 w-10 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#DCEFE4] text-sm font-bold text-[#0F6B4D]">
+                          {member.name
+                            ?.charAt(0)
+                            ?.toUpperCase() ||
+                            'T'}
+                        </div>
+                      )}
+
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-[#17211D]">
+                          {member.name ||
+                            'Traveler'}
+                        </p>
+
+                        <p className="text-xs text-[#66756D]">
+                          {memberIsCreator
+                            ? 'Room Creator'
+                            : 'Member'}
+                        </p>
                       </div>
-                    )}
-
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-[#17211D]">
-                        {member.name ||
-                          'Traveler'}
-                      </p>
-
-                      <p className="text-xs text-[#66756D]">
-                        {member._id ===
-                        room.creator?._id
-                          ? 'Room Creator'
-                          : 'Member'}
-                      </p>
                     </div>
-                  </div>
-                )
+                  );
+                }
               )}
             </div>
           </section>
         </div>
 
         {/* ===================================================
-            RIGHT SIDE: JOIN / STATUS CARD
-
-            This is where the selected traveler can request
-            room membership.
-
-            We change the controls based on viewerStatus.
+            RIGHT COLUMN - MEMBERSHIP STATUS
            =================================================== */}
+
         <aside className="h-fit rounded-xl border border-[#DCE5E0] bg-white p-5 shadow-sm xl:sticky xl:top-24">
           <h2 className="text-lg font-bold text-[#17211D]">
             Room Membership
@@ -538,7 +1088,7 @@ function PublicRoomDetailsPage() {
             </div>
           </div>
 
-          {/* Creator already owns the room. */}
+          {/* The creator already belongs to their own room. */}
           {viewerStatus ===
             'creator' && (
             <div className="mt-5 rounded-lg border border-[#BFDCCA] bg-[#EEF7F2] px-4 py-3 text-sm font-semibold text-[#0F6B4D]">
@@ -546,16 +1096,18 @@ function PublicRoomDetailsPage() {
             </div>
           )}
 
-          {/* Accepted traveler is already inside members. */}
+          {/* Accepted members are already inside the room's
+              members array. */}
           {viewerStatus ===
             'member' && (
             <div className="mt-5 rounded-lg border border-[#BFDCCA] bg-[#EEF7F2] px-4 py-3 text-sm font-semibold text-[#0F6B4D]">
-              You are already a
-              member of this room.
+              You are a member of
+              this room.
             </div>
           )}
 
-          {/* Pending request exists in MongoDB. */}
+          {/* Request exists but has not yet been accepted or
+              rejected by the creator. */}
           {viewerStatus ===
             'pending' && (
             <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
@@ -564,10 +1116,8 @@ function PublicRoomDetailsPage() {
             </div>
           )}
 
-          {/* If a previous request was rejected, Feature 1 does
-              not automatically create another one.
-
-              We simply display the real backend state. */}
+          {/* Feature 1 currently keeps rejected requests in the
+              database instead of silently deleting them. */}
           {viewerStatus ===
             'rejected' && (
             <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
@@ -576,8 +1126,14 @@ function PublicRoomDetailsPage() {
             </div>
           )}
 
-          {/* Only an unrelated traveler with no existing request
-              can see the Request to Join action. */}
+          {/* Only a traveler who:
+              - is not creator
+              - is not member
+              - has no pending/rejected request
+              - room is open
+              - room is not full
+
+              can send a new request. */}
           {viewerStatus ===
             'none' &&
             !roomIsFull &&
@@ -617,11 +1173,6 @@ function PublicRoomDetailsPage() {
                 requests.
               </div>
             )}
-
-          {/* We deliberately do NOT place Accept/Reject here.
-
-              Those are creator-side Feature 2 controls and will
-              be implemented when we start Module 2. */}
         </aside>
       </div>
     </div>

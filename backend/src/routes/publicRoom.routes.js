@@ -3,10 +3,13 @@ import {
 } from 'express';
 
 import {
+  acceptJoinRequest,
   createPublicRoom,
   getMyPublicRooms,
+  getPendingJoinRequests,
   getPublicRoomById,
   getPublicRooms,
+  rejectJoinRequest,
   requestToJoinPublicRoom,
 } from '../controllers/publicRoom.controller.js';
 
@@ -18,17 +21,21 @@ import {
 const router =
   Router();
 
-// Public Event Rooms belong to travelers.
+// ============================================================
+// SHARED PUBLIC-ROOM SECURITY
+// ============================================================
+//
+// Every Public Room feature belongs to authenticated travelers.
 //
 // Frontend route protection is useful for user experience,
-// but it is NOT enough for security.
+// but somebody could call the API directly using Postman,
+// DevTools, curl, etc.
 //
-// Somebody can call an API directly without using our React UI.
-//
-// Therefore every public-room API also checks:
+// Therefore the BACKEND independently verifies:
 //
 // 1. Is the user authenticated?
-// 2. Is the user a traveler?
+// 2. Is the user actually a traveler?
+
 const travelerPublicRoomProtection =
   [
     authenticateUser,
@@ -37,10 +44,14 @@ const travelerPublicRoomProtection =
     ),
   ];
 
+// ============================================================
+// FEATURE 1 ROUTES
+// ============================================================
+
 // ------------------------------------------------------------
 // POST /api/v1/public-rooms
 //
-// Create a new Public Event Room.
+// Create a Public Event Room.
 //
 // The authenticated traveler automatically becomes:
 // - creator
@@ -55,19 +66,10 @@ router.post(
 // ------------------------------------------------------------
 // GET /api/v1/public-rooms/mine
 //
-// Return only rooms created by the logged-in traveler.
+// List rooms created by the logged-in traveler.
 //
-// IMPORTANT:
-//
-// This route appears BEFORE:
-//
-// /:roomId
-//
-// Otherwise Express could interpret:
-//
-// "mine"
-//
-// as if it were a room ID.
+// "mine" must appear before /:roomId so Express does not
+// interpret the word "mine" as a MongoDB room ID.
 // ------------------------------------------------------------
 router.get(
   '/mine',
@@ -79,12 +81,6 @@ router.get(
 // GET /api/v1/public-rooms
 //
 // Discover open rooms created by other travelers.
-//
-// Optional query parameters will support:
-// - destination
-// - dates
-// - min/max budget
-// - interest
 // ------------------------------------------------------------
 router.get(
   '/',
@@ -95,15 +91,8 @@ router.get(
 // ------------------------------------------------------------
 // POST /api/v1/public-rooms/:roomId/join-requests
 //
-// Creates a pending join request.
-//
-// Feature 1 needs the request to be created.
-//
-// Feature 2 will later add:
-// - viewing pending requests
-// - Accept
-// - Reject
-// - adding accepted traveler to members
+// Feature 1:
+// Another traveler sends a pending join request.
 // ------------------------------------------------------------
 router.post(
   '/:roomId/join-requests',
@@ -111,17 +100,65 @@ router.post(
   requestToJoinPublicRoom
 );
 
+// ============================================================
+// FEATURE 2 ROUTES
+// ============================================================
+
+// ------------------------------------------------------------
+// GET /api/v1/public-rooms/:roomId/join-requests
+//
+// ROOM CREATOR ONLY.
+//
+// Returns pending join requests with basic applicant profile
+// information.
+//
+// The controller performs the creator ownership check.
+// ------------------------------------------------------------
+router.get(
+  '/:roomId/join-requests',
+  ...travelerPublicRoomProtection,
+  getPendingJoinRequests
+);
+
+// ------------------------------------------------------------
+// PATCH
+// /api/v1/public-rooms/:roomId/join-requests/:requestId/accept
+//
+// ROOM CREATOR ONLY.
+//
+// Accepting:
+// - changes request -> accepted
+// - adds requester -> room.members
+// ------------------------------------------------------------
+router.patch(
+  '/:roomId/join-requests/:requestId/accept',
+  ...travelerPublicRoomProtection,
+  acceptJoinRequest
+);
+
+// ------------------------------------------------------------
+// PATCH
+// /api/v1/public-rooms/:roomId/join-requests/:requestId/reject
+//
+// ROOM CREATOR ONLY.
+//
+// Rejecting:
+// - changes request -> rejected
+// - does NOT add requester to members
+// ------------------------------------------------------------
+router.patch(
+  '/:roomId/join-requests/:requestId/reject',
+  ...travelerPublicRoomProtection,
+  rejectJoinRequest
+);
+
 // ------------------------------------------------------------
 // GET /api/v1/public-rooms/:roomId
 //
-// Loads complete information for the selected room.
+// Load one selected room.
 //
-// It also tells the frontend whether the current traveler is:
-// - creator
-// - member
-// - pending
-// - rejected
-// - none
+// Keep this general dynamic route after the more specific
+// join-request routes above.
 // ------------------------------------------------------------
 router.get(
   '/:roomId',

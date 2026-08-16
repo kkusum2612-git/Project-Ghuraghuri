@@ -1186,10 +1186,570 @@ async function requestToJoinPublicRoom(
   }
 }
 
+// ============================================================
+// GET PENDING JOIN REQUESTS
+// ============================================================
+//
+// This controller is part of Rafi's Module 2:
+// Public Room Join Request & Member Management.
+//
+// Only the CREATOR of the selected room is allowed to see
+// the pending requests.
+//
+// Accepted room members can see the room workspace later,
+// but they cannot manage who enters the room.
+
+async function getPendingJoinRequests(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      roomId,
+    } = req.params;
+
+    // --------------------------------------------------------
+    // STEP 1: Validate the room ID
+    // --------------------------------------------------------
+    //
+    // MongoDB ObjectIds have a particular format.
+    //
+    // Checking it before querying prevents Mongoose from
+    // throwing a CastError when somebody sends something like:
+    //
+    // /public-rooms/not-a-real-id/join-requests
+
+    if (
+      !mongoose.isValidObjectId(
+        roomId
+      )
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            'Invalid public room ID.',
+        });
+    }
+
+    // --------------------------------------------------------
+    // STEP 2: Load the room
+    // --------------------------------------------------------
+
+    const room =
+      await PublicRoom.findById(
+        roomId
+      )
+        .select(
+          'creator roomName'
+        )
+        .lean();
+
+    if (!room) {
+      return res
+        .status(404)
+        .json({
+          success: false,
+
+          message:
+            'Public room not found.',
+        });
+    }
+
+    // --------------------------------------------------------
+    // STEP 3: Check CREATOR ownership
+    // --------------------------------------------------------
+    //
+    // This is the important security rule.
+    //
+    // We do NOT trust the frontend to decide whether somebody
+    // is allowed to see the requests.
+    //
+    // Even if a room member manually calls this API through
+    // Postman or the browser console, the backend still checks:
+    //
+    // room.creator === req.user._id
+
+    const isCreator =
+      room.creator.toString() ===
+      req.user._id.toString();
+
+    if (!isCreator) {
+      return res
+        .status(403)
+        .json({
+          success: false,
+
+          message:
+            'Only the room creator can view join requests.',
+        });
+    }
+
+    // --------------------------------------------------------
+    // STEP 4: Load only PENDING requests
+    // --------------------------------------------------------
+    //
+    // Feature 2's management panel is specifically for
+    // requests that still need a decision.
+    //
+    // Accepted/rejected requests therefore do not appear here.
+
+    const joinRequests =
+      await JoinRequest.find({
+        room: roomId,
+
+        status: 'pending',
+      })
+        // requester normally stores only a MongoDB User ID.
+        //
+        // populate() replaces that ID in this API response with
+        // the basic profile information needed by the creator.
+        //
+        // We deliberately do NOT expose passwordHash, phone,
+        // internal account data, etc.
+        .populate(
+          'requester',
+          'name email profileImageUrl'
+        )
+        .sort({
+          createdAt: 1,
+        })
+        .lean();
+
+    return res
+      .status(200)
+      .json({
+        success: true,
+
+        message:
+          'Pending join requests loaded successfully.',
+
+        data:
+          joinRequests,
+      });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// ============================================================
+// ACCEPT JOIN REQUEST
+// ============================================================
+//
+// When the creator accepts a request:
+//
+// 1. Verify the room.
+// 2. Verify that the logged-in user owns the room.
+// 3. Verify the join request.
+// 4. Make sure the room still has space.
+// 5. Add the requester to PublicRoom.members.
+// 6. Change the JoinRequest status to "accepted".
+//
+// After this, the traveler becomes a real room member.
+
+async function acceptJoinRequest(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      roomId,
+      requestId,
+    } = req.params;
+
+    // --------------------------------------------------------
+    // STEP 1: Validate both MongoDB IDs
+    // --------------------------------------------------------
+
+    if (
+      !mongoose.isValidObjectId(
+        roomId
+      )
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            'Invalid public room ID.',
+        });
+    }
+
+    if (
+      !mongoose.isValidObjectId(
+        requestId
+      )
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            'Invalid join request ID.',
+        });
+    }
+
+    // --------------------------------------------------------
+    // STEP 2: Load the room
+    // --------------------------------------------------------
+
+    const room =
+      await PublicRoom.findById(
+        roomId
+      );
+
+    if (!room) {
+      return res
+        .status(404)
+        .json({
+          success: false,
+
+          message:
+            'Public room not found.',
+        });
+    }
+
+    // --------------------------------------------------------
+    // STEP 3: Check that the logged-in traveler is the creator
+    // --------------------------------------------------------
+
+    const isCreator =
+      room.creator.toString() ===
+      req.user._id.toString();
+
+    if (!isCreator) {
+      return res
+        .status(403)
+        .json({
+          success: false,
+
+          message:
+            'Only the room creator can accept join requests.',
+        });
+    }
+
+    // --------------------------------------------------------
+    // STEP 4: Find the request
+    // --------------------------------------------------------
+    //
+    // Notice that we search using BOTH:
+    //
+    // _id: requestId
+    // room: roomId
+    //
+    // This prevents somebody from taking a request belonging
+    // to Room A and trying to accept it through Room B's URL.
+
+    const joinRequest =
+      await JoinRequest.findOne({
+        _id: requestId,
+
+        room: roomId,
+      });
+
+    if (!joinRequest) {
+      return res
+        .status(404)
+        .json({
+          success: false,
+
+          message:
+            'Join request not found for this room.',
+        });
+    }
+
+    // Only a pending request still requires a decision.
+    if (
+      joinRequest.status !==
+      'pending'
+    ) {
+      return res
+        .status(409)
+        .json({
+          success: false,
+
+          message:
+            'This join request has already been processed.',
+        });
+    }
+
+    const requesterId =
+      joinRequest.requester.toString();
+
+    // --------------------------------------------------------
+    // STEP 5: Check whether the traveler is already a member
+    // --------------------------------------------------------
+    //
+    // This normally should not happen because Feature 1 blocks
+    // members from creating new requests.
+    //
+    // We still protect against inconsistent data on the
+    // backend.
+
+    const isAlreadyMember =
+      room.members.some(
+        (memberId) =>
+          memberId.toString() ===
+          requesterId
+      );
+
+    if (!isAlreadyMember) {
+      // ------------------------------------------------------
+      // STEP 6: Check room capacity
+      // ------------------------------------------------------
+
+      if (
+        room.members.length >=
+        room.maxMembers
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            message:
+              'This room has reached its maximum member limit.',
+          });
+      }
+
+      // ------------------------------------------------------
+      // STEP 7: Add the requester to the members array
+      // ------------------------------------------------------
+      //
+      // addToSet() behaves like MongoDB's $addToSet.
+      //
+      // Unlike push(), it avoids inserting the same member ID
+      // twice.
+
+      room.members.addToSet(
+        joinRequest.requester
+      );
+
+      await room.save();
+    }
+
+    // --------------------------------------------------------
+    // STEP 8: Mark the request as accepted
+    // --------------------------------------------------------
+
+    joinRequest.status =
+      'accepted';
+
+    await joinRequest.save();
+
+    // --------------------------------------------------------
+    // STEP 9: Populate response information
+    // --------------------------------------------------------
+    //
+    // Returning the updated room lets React immediately update
+    // the Current Members section without requiring a browser
+    // refresh.
+
+    await room.populate([
+      {
+        path: 'creator',
+
+        select:
+          'name profileImageUrl',
+      },
+      {
+        path: 'members',
+
+        select:
+          'name profileImageUrl',
+      },
+    ]);
+
+    await joinRequest.populate(
+      'requester',
+      'name email profileImageUrl'
+    );
+
+    return res
+      .status(200)
+      .json({
+        success: true,
+
+        message:
+          'Join request accepted successfully.',
+
+        data: {
+          joinRequest,
+          room,
+        },
+      });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// ============================================================
+// REJECT JOIN REQUEST
+// ============================================================
+//
+// Rejecting is simpler than accepting.
+//
+// We do NOT add the traveler to PublicRoom.members.
+//
+// We only change:
+//
+// pending
+//
+// into:
+//
+// rejected
+
+async function rejectJoinRequest(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      roomId,
+      requestId,
+    } = req.params;
+
+    if (
+      !mongoose.isValidObjectId(
+        roomId
+      )
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            'Invalid public room ID.',
+        });
+    }
+
+    if (
+      !mongoose.isValidObjectId(
+        requestId
+      )
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            'Invalid join request ID.',
+        });
+    }
+
+    // Load the room first so ownership can be checked.
+    const room =
+      await PublicRoom.findById(
+        roomId
+      )
+        .select(
+          'creator'
+        )
+        .lean();
+
+    if (!room) {
+      return res
+        .status(404)
+        .json({
+          success: false,
+
+          message:
+            'Public room not found.',
+        });
+    }
+
+    // Only the creator may reject applicants.
+    const isCreator =
+      room.creator.toString() ===
+      req.user._id.toString();
+
+    if (!isCreator) {
+      return res
+        .status(403)
+        .json({
+          success: false,
+
+          message:
+            'Only the room creator can reject join requests.',
+        });
+    }
+
+    // Find this exact request belonging to this exact room.
+    const joinRequest =
+      await JoinRequest.findOne({
+        _id: requestId,
+
+        room: roomId,
+      });
+
+    if (!joinRequest) {
+      return res
+        .status(404)
+        .json({
+          success: false,
+
+          message:
+            'Join request not found for this room.',
+        });
+    }
+
+    if (
+      joinRequest.status !==
+      'pending'
+    ) {
+      return res
+        .status(409)
+        .json({
+          success: false,
+
+          message:
+            'This join request has already been processed.',
+        });
+    }
+
+    // Rejecting does not modify PublicRoom.members.
+    joinRequest.status =
+      'rejected';
+
+    await joinRequest.save();
+
+    await joinRequest.populate(
+      'requester',
+      'name email profileImageUrl'
+    );
+
+    return res
+      .status(200)
+      .json({
+        success: true,
+
+        message:
+          'Join request rejected successfully.',
+
+        data:
+          joinRequest,
+      });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 export {
+  acceptJoinRequest,
   createPublicRoom,
   getMyPublicRooms,
+  getPendingJoinRequests,
   getPublicRoomById,
   getPublicRooms,
+  rejectJoinRequest,
   requestToJoinPublicRoom,
 };
