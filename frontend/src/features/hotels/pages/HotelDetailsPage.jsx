@@ -107,10 +107,18 @@ function HotelDetailsPage() {
     setPageError,
   ] = useState('');
 
+  /*
+   * Instead of storing a simple success message,
+   * we keep some useful information about the
+   * successfully created booking.
+   *
+   * When this value is not null, the success
+   * modal is displayed.
+   */
   const [
-    successMessage,
-    setSuccessMessage,
-  ] = useState('');
+    bookingSuccess,
+    setBookingSuccess,
+  ] = useState(null);
 
   const [
     checkInDate,
@@ -295,7 +303,13 @@ function HotelDetailsPage() {
     event?.preventDefault();
 
     setPageError('');
-    setSuccessMessage('');
+
+    /*
+     * If the traveler starts a new availability
+     * check, any old success popup should no
+     * longer be displayed.
+     */
+    setBookingSuccess(null);
 
     if (
       !checkInDate ||
@@ -342,7 +356,7 @@ function HotelDetailsPage() {
 
   async function handleBooking() {
     setPageError('');
-    setSuccessMessage('');
+    setBookingSuccess(null);
 
     if (
       !checkInDate ||
@@ -447,13 +461,35 @@ function HotelDetailsPage() {
       const booking =
         result?.data?.booking;
 
+      /*
+       * Refresh availability so the number of
+       * remaining rooms immediately reflects
+       * the booking that was just created.
+       */
       await refreshAvailability();
 
-      setSuccessMessage(
-        `Booking request submitted successfully. Total: ${formatMoney(
-          booking?.totalPrice
-        )}`
-      );
+      /*
+       * Save a small booking summary.
+       *
+       * Setting this state causes the success
+       * modal near the bottom of the component
+       * to appear.
+       *
+       * We use fallbacks so the modal still works
+       * even if the API response does not include
+       * one of the snapshot names.
+       */
+      setBookingSuccess({
+        hotelName:
+          booking?.hotelName ||
+          hotel.name,
+        roomTypeName:
+          booking?.roomTypeName ||
+          selectedRoom.name,
+        totalPrice:
+          booking?.totalPrice ??
+          estimatedTotal,
+      });
     } catch (error) {
       setPageError(
         error.response?.data
@@ -506,6 +542,136 @@ function HotelDetailsPage() {
 
   return (
     <div>
+      {/*
+       * =====================================================
+       * BOOKING SUCCESS MODAL
+       * =====================================================
+       *
+       * This replaces the old small inline green alert.
+       *
+       * `fixed inset-0` makes the popup cover the screen.
+       * The semi-transparent dark background makes the
+       * confirmation stand out from the hotel page.
+       */}
+      {bookingSuccess && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="booking-success-title"
+            className="w-full max-w-md rounded-2xl border border-[#DCE5E0] bg-white p-6 text-center shadow-2xl sm:p-8"
+          >
+            {/*
+             * Large visual success indicator.
+             */}
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#DCEFE4] text-3xl font-bold text-[#0F6B4D]">
+              ✓
+            </div>
+
+            <h2
+              id="booking-success-title"
+              className="mt-5 text-2xl font-bold text-[#17211D]"
+            >
+              Booking Request
+              Submitted!
+            </h2>
+
+            <p className="mt-3 text-sm leading-6 text-[#66756D]">
+              Your booking request
+              for{' '}
+              <span className="font-semibold text-[#17211D]">
+                {
+                  bookingSuccess.hotelName
+                }
+              </span>{' '}
+              has been sent
+              successfully.
+            </p>
+
+            {/*
+             * Small booking summary so the traveler
+             * can immediately verify what they booked.
+             */}
+            <div className="mt-5 rounded-xl bg-[#F7FAF8] p-4 text-left">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-sm text-[#66756D]">
+                  Room
+                </span>
+
+                <span className="text-sm font-semibold text-[#17211D]">
+                  {
+                    bookingSuccess.roomTypeName
+                  }
+                </span>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-4 border-t border-[#DCE5E0] pt-3">
+                <span className="font-bold text-[#17211D]">
+                  Total
+                </span>
+
+                <span className="text-lg font-bold text-[#0F6B4D]">
+                  {formatMoney(
+                    bookingSuccess.totalPrice
+                  )}
+                </span>
+              </div>
+            </div>
+
+            {/*
+             * New hotel bookings begin as pending.
+             * We explicitly explain that here so
+             * "submitted" is not confused with
+             * "confirmed".
+             */}
+            <div className="mt-5 rounded-xl border border-[#F0DDA8] bg-[#FFF9E8] px-4 py-4">
+              <span className="inline-flex rounded-full bg-[#FFF0C2] px-3 py-1 text-xs font-bold text-[#8A6512]">
+                Pending
+              </span>
+
+              <p className="mt-2 text-sm leading-6 text-[#6E5A27]">
+                The hotel will review
+                your request. You can
+                track its status from
+                My Bookings.
+              </p>
+            </div>
+
+            {/*
+             * Primary action:
+             * Take the traveler directly to their
+             * booking history.
+             */}
+            <button
+              type="button"
+              onClick={() =>
+                navigate('/bookings')
+              }
+              className="mt-6 w-full rounded-lg bg-[#0F6B4D] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#0A523B]"
+            >
+              View My Bookings
+            </button>
+
+            {/*
+             * Secondary action:
+             * Return to the hotel search page.
+             */}
+            <button
+              type="button"
+              onClick={() =>
+                navigate('/hotels')
+              }
+              className="mt-3 w-full rounded-lg border border-[#D6DEDA] bg-white px-5 py-3 text-sm font-semibold text-[#44524B] transition hover:bg-[#F7FAF8]"
+            >
+              Continue Browsing
+            </button>
+          </div>
+        </div>
+      )}
+
       <button
         type="button"
         onClick={() =>
@@ -519,12 +685,6 @@ function HotelDetailsPage() {
       {pageError && (
         <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {pageError}
-        </div>
-      )}
-
-      {successMessage && (
-        <div className="mb-4 rounded-lg border border-[#A9D9BB] bg-[#EEF7F2] px-4 py-3 text-sm font-semibold text-[#0F6B4D]">
-          {successMessage}
         </div>
       )}
 
@@ -749,8 +909,8 @@ function HotelDetailsPage() {
                     []
                   );
 
-                  setSuccessMessage(
-                    ''
+                  setBookingSuccess(
+                    null
                   );
                 }}
                 className="w-full rounded-lg border border-[#D6DEDA] px-3 py-2.5 text-sm outline-none focus:border-[#0F6B4D]"
@@ -774,8 +934,8 @@ function HotelDetailsPage() {
                     []
                   );
 
-                  setSuccessMessage(
-                    ''
+                  setBookingSuccess(
+                    null
                   );
                 }}
                 className="w-full rounded-lg border border-[#D6DEDA] px-3 py-2.5 text-sm outline-none focus:border-[#0F6B4D]"
