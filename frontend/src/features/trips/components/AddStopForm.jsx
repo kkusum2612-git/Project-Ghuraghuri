@@ -6,20 +6,31 @@ import {
   addStop,
 } from '../api/tripApi';
 
+import LocationPicker
+  from './LocationPicker';
+
 const INITIAL_FORM = {
   placeName: '',
   description: '',
-  latitude: '',
-  longitude: '',
   visitTime: '',
   estimatedDurationMinutes:
     '',
+};
+
+const INITIAL_LOCATION = {
+  latitude: '',
+  longitude: '',
+  displayName: '',
+  source: '',
 };
 
 function AddStopForm({
   tripId,
   dayId,
   onStopAdded,
+  isMapPicking = false,
+  onStartMapPicking,
+  onStopMapPicking,
 }) {
   const [
     formData,
@@ -27,6 +38,18 @@ function AddStopForm({
   ] = useState(
     INITIAL_FORM
   );
+
+  const [
+    location,
+    setLocation,
+  ] = useState(
+    INITIAL_LOCATION
+  );
+
+  const [
+    locationPickerResetKey,
+    setLocationPickerResetKey,
+  ] = useState(0);
 
   const [
     isSubmitting,
@@ -52,12 +75,63 @@ function AddStopForm({
     );
   }
 
+  function handleLocationChange(
+    nextLocation
+  ) {
+    setLocation(
+      nextLocation
+    );
+
+    setErrorMessage('');
+  }
+
+  function handleStartMapPicking() {
+    onStartMapPicking?.({
+      currentLocation:
+        location,
+
+      onLocationPicked:
+        handleLocationChange,
+    });
+  }
+
+  function handleStopMapPicking() {
+    onStopMapPicking?.();
+  }
+
   async function handleSubmit(
     event
   ) {
     event.preventDefault();
 
     if (!dayId) {
+      return;
+    }
+
+    const normalizedPlaceName =
+      formData.placeName.trim();
+
+    if (
+      normalizedPlaceName.length <
+      2
+    ) {
+      setErrorMessage(
+        'Enter a name for this destination.'
+      );
+
+      return;
+    }
+
+    if (
+      location.latitude ===
+        '' ||
+      location.longitude ===
+        ''
+    ) {
+      setErrorMessage(
+        'Choose a location before adding this destination.'
+      );
+
       return;
     }
 
@@ -71,16 +145,16 @@ function AddStopForm({
           dayId,
           {
             placeName:
-              formData.placeName,
+              normalizedPlaceName,
 
             description:
-              formData.description,
+              formData.description.trim(),
 
             latitude:
-              formData.latitude,
+              location.latitude,
 
             longitude:
-              formData.longitude,
+              location.longitude,
 
             visitTime:
               formData.visitTime,
@@ -92,8 +166,19 @@ function AddStopForm({
           }
         );
 
+      handleStopMapPicking();
+
       setFormData(
         INITIAL_FORM
+      );
+
+      setLocation(
+        INITIAL_LOCATION
+      );
+
+      setLocationPickerResetKey(
+        (current) =>
+          current + 1
       );
 
       onStopAdded(
@@ -109,6 +194,14 @@ function AddStopForm({
       setIsSubmitting(false);
     }
   }
+
+  const locationSelected =
+    location.latitude !== '' &&
+    location.longitude !== '';
+
+  const validPlaceName =
+    formData.placeName
+      .trim().length >= 2;
 
   return (
     <form
@@ -128,18 +221,21 @@ function AddStopForm({
       </div>
 
       {errorMessage && (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div
+          className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+          role="alert"
+        >
           {errorMessage}
         </div>
       )}
 
-      <div className="mt-4 space-y-4">
+      <div className="mt-4 space-y-5">
         <div>
           <label
             htmlFor="placeName"
             className="text-sm font-semibold text-[#44524B]"
           >
-            Place name
+            Stop name
           </label>
 
           <input
@@ -153,8 +249,41 @@ function AddStopForm({
             onChange={
               handleChange
             }
-            placeholder="e.g. Ratargul Swamp Forest"
-            className="mt-1 w-full rounded-lg border border-[#CBD8D1] bg-white px-3 py-2 text-sm outline-none focus:border-[#0F6B4D]"
+            placeholder="e.g. Laboni Beach"
+            className="mt-1 min-w-0 w-full rounded-lg border border-[#CBD8D1] bg-white px-3 py-2 text-sm outline-none focus:border-[#0F6B4D]"
+          />
+
+          <p className="mt-1.5 text-xs leading-5 text-[#7B8982]">
+            This name appears in the
+            itinerary and on its map
+            pin.
+          </p>
+        </div>
+
+        <div className="min-w-0 rounded-xl border border-[#DCE5E0] bg-white p-4">
+          <LocationPicker
+            key={
+              locationPickerResetKey
+            }
+            value={
+              location
+            }
+            onChange={
+              handleLocationChange
+            }
+            searchSuggestion={
+              formData.placeName
+            }
+            idPrefix="add-stop"
+            isMapPicking={
+              isMapPicking
+            }
+            onStartMapPicking={
+              handleStartMapPicking
+            }
+            onStopMapPicking={
+              handleStopMapPicking
+            }
           />
         </div>
 
@@ -181,59 +310,7 @@ function AddStopForm({
           />
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label
-              htmlFor="latitude"
-              className="text-sm font-semibold text-[#44524B]"
-            >
-              Latitude
-            </label>
-
-            <input
-              id="latitude"
-              name="latitude"
-              type="number"
-              step="any"
-              required
-              value={
-                formData.latitude
-              }
-              onChange={
-                handleChange
-              }
-              placeholder="24.89"
-              className="mt-1 w-full rounded-lg border border-[#CBD8D1] bg-white px-3 py-2 text-sm outline-none focus:border-[#0F6B4D]"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="longitude"
-              className="text-sm font-semibold text-[#44524B]"
-            >
-              Longitude
-            </label>
-
-            <input
-              id="longitude"
-              name="longitude"
-              type="number"
-              step="any"
-              required
-              value={
-                formData.longitude
-              }
-              onChange={
-                handleChange
-              }
-              placeholder="91.87"
-              className="mt-1 w-full rounded-lg border border-[#CBD8D1] bg-white px-3 py-2 text-sm outline-none focus:border-[#0F6B4D]"
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3">
           <div>
             <label
               htmlFor="visitTime"
@@ -242,7 +319,7 @@ function AddStopForm({
               Visit time
             </label>
 
-            <div className="mt-1 flex w-full min-w-0 rounded-lg border border-[#CBD8D1] bg-white px-3 py-2 focus-within:border-[#0F6B4D]">
+            <div className="mt-1 flex min-w-0 rounded-lg border border-[#CBD8D1] bg-white px-3 py-2 focus-within:border-[#0F6B4D]">
               <input
                 id="visitTime"
                 name="visitTime"
@@ -253,7 +330,7 @@ function AddStopForm({
                 onChange={
                   handleChange
                 }
-                className="block w-full min-w-0 border-0 bg-transparent p-0 text-sm outline-none"
+                className="block min-w-0 w-full border-0 bg-transparent p-0 text-sm outline-none"
               />
             </div>
           </div>
@@ -279,7 +356,7 @@ function AddStopForm({
                 handleChange
               }
               placeholder="60"
-              className="mt-1 w-full rounded-lg border border-[#CBD8D1] bg-white px-3 py-2 text-sm outline-none focus:border-[#0F6B4D]"
+              className="mt-1 min-w-0 w-full rounded-lg border border-[#CBD8D1] bg-white px-3 py-2 text-sm outline-none focus:border-[#0F6B4D]"
             />
           </div>
         </div>
@@ -288,7 +365,9 @@ function AddStopForm({
           type="submit"
           disabled={
             isSubmitting ||
-            !dayId
+            !dayId ||
+            !validPlaceName ||
+            !locationSelected
           }
           className="w-full rounded-lg bg-[#0F6B4D] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0A523B] disabled:cursor-not-allowed disabled:opacity-60"
         >

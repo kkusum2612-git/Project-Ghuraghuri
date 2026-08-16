@@ -5,12 +5,14 @@ import {
 import L from 'leaflet';
 
 import {
+  CircleMarker,
   MapContainer,
   Marker,
   Polyline,
   Popup,
   TileLayer,
   useMap,
+  useMapEvents,
 } from 'react-leaflet';
 
 import 'leaflet/dist/leaflet.css';
@@ -128,10 +130,21 @@ function createNumberedIcon(
 function MapViewport({
   stops,
   routePoints,
+  isPickingLocation,
 }) {
   const map = useMap();
 
   useEffect(() => {
+    /*
+     * While the traveler is selecting a
+     * location, do not automatically move
+     * the map. They need full control over
+     * pan and zoom for precise picking.
+     */
+    if (isPickingLocation) {
+      return;
+    }
+
     const stopPoints =
       stops
         .filter((stop) =>
@@ -202,6 +215,7 @@ function MapViewport({
       }
     );
   }, [
+    isPickingLocation,
     map,
     routePoints,
     stops,
@@ -210,9 +224,59 @@ function MapViewport({
   return null;
 }
 
+function MapLocationPicker({
+  isPickingLocation,
+  onLocationPicked,
+}) {
+  const map =
+    useMapEvents({
+      click(event) {
+        if (
+          !isPickingLocation
+        ) {
+          return;
+        }
+
+        onLocationPicked?.({
+          latitude:
+            event.latlng.lat,
+
+          longitude:
+            event.latlng.lng,
+        });
+      },
+    });
+
+  useEffect(() => {
+    const container =
+      map.getContainer();
+
+    const previousCursor =
+      container.style.cursor;
+
+    container.style.cursor =
+      isPickingLocation
+        ? 'crosshair'
+        : '';
+
+    return () => {
+      container.style.cursor =
+        previousCursor;
+    };
+  }, [
+    isPickingLocation,
+    map,
+  ]);
+
+  return null;
+}
+
 function TripMap({
   stops = [],
   routePoints = [],
+  isPickingLocation = false,
+  pickedLocation = null,
+  onLocationPicked,
 }) {
   const validStops =
     stops.filter((stop) =>
@@ -229,104 +293,174 @@ function TripMap({
         )
       : [];
 
+  const hasPickedLocation =
+    pickedLocation &&
+    isValidCoordinate(
+      pickedLocation.latitude,
+      pickedLocation.longitude
+    );
+
   return (
     <div className="overflow-hidden rounded-xl border border-[#DCE5E0] bg-white shadow-sm">
-      <MapContainer
-        center={
-          DEFAULT_CENTER
-        }
-        zoom={7}
-        scrollWheelZoom
-        className="h-[480px] w-full"
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+      <div className="relative">
+        {isPickingLocation && (
+          <div className="pointer-events-none absolute left-1/2 top-4 z-[1000] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-lg border border-[#BFD9CD] bg-white/95 px-4 py-3 text-center shadow-md backdrop-blur-sm">
+            <p className="text-sm font-bold text-[#0F6B4D]">
+              Pick a location
+            </p>
 
-        <MapViewport
-          stops={
-            validStops
-          }
-          routePoints={
-            validRoutePoints
-          }
-        />
+            <p className="mt-1 text-xs leading-5 text-[#66756D]">
+              Click anywhere on this
+              map. You can keep
+              clicking to fine-tune
+              the selected point.
+            </p>
+          </div>
+        )}
 
-        {validRoutePoints.length >=
-          2 && (
-          <Polyline
-            positions={
+        <MapContainer
+          center={
+            DEFAULT_CENTER
+          }
+          zoom={7}
+          scrollWheelZoom
+          className="h-[560px] w-full"
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+
+          <MapViewport
+            stops={
+              validStops
+            }
+            routePoints={
               validRoutePoints
             }
-            pathOptions={{
-              color:
-                '#0F6B4D',
-              weight: 5,
-              opacity: 0.8,
-            }}
+            isPickingLocation={
+              isPickingLocation
+            }
           />
-        )}
 
-        {validStops.map(
-          (stop) => (
-            <Marker
-              key={
-                stop._id
+          <MapLocationPicker
+            isPickingLocation={
+              isPickingLocation
+            }
+            onLocationPicked={
+              onLocationPicked
+            }
+          />
+
+          {validRoutePoints.length >=
+            2 && (
+            <Polyline
+              positions={
+                validRoutePoints
               }
-              position={[
+              pathOptions={{
+                color:
+                  '#0F6B4D',
+                weight: 5,
+                opacity: 0.8,
+              }}
+            />
+          )}
+
+          {validStops.map(
+            (stop) => (
+              <Marker
+                key={
+                  stop._id
+                }
+                position={[
+                  Number(
+                    stop.latitude
+                  ),
+                  Number(
+                    stop.longitude
+                  ),
+                ]}
+                icon={createNumberedIcon(
+                  stop.order
+                )}
+              >
+                <Popup>
+                  <div className="min-w-[180px]">
+                    <p className="font-bold">
+                      {stop.order}.{' '}
+                      {
+                        stop.placeName
+                      }
+                    </p>
+
+                    {stop.visitTime && (
+                      <p className="mt-1">
+                        Visit time:{' '}
+                        {
+                          stop.visitTime
+                        }
+                      </p>
+                    )}
+
+                    {stop.description && (
+                      <p className="mt-1">
+                        {
+                          stop.description
+                        }
+                      </p>
+                    )}
+                  </div>
+                </Popup>
+              </Marker>
+            )
+          )}
+
+          {hasPickedLocation && (
+            <CircleMarker
+              center={[
                 Number(
-                  stop.latitude
+                  pickedLocation.latitude
                 ),
                 Number(
-                  stop.longitude
+                  pickedLocation.longitude
                 ),
               ]}
-              icon={createNumberedIcon(
-                stop.order
-              )}
+              radius={11}
+              pathOptions={{
+                color:
+                  '#B45309',
+                fillColor:
+                  '#F59E0B',
+                fillOpacity: 0.9,
+                weight: 3,
+              }}
             >
               <Popup>
-                <div className="min-w-[180px]">
-                  <p className="font-bold">
-                    {stop.order}.{' '}
-                    {
-                      stop.placeName
-                    }
-                  </p>
-
-                  {stop.visitTime && (
-                    <p className="mt-1">
-                      Visit time:{' '}
-                      {
-                        stop.visitTime
-                      }
-                    </p>
-                  )}
-
-                  {stop.description && (
-                    <p className="mt-1">
-                      {
-                        stop.description
-                      }
-                    </p>
-                  )}
-                </div>
+                <p className="font-semibold">
+                  Selected location
+                </p>
               </Popup>
-            </Marker>
-          )
-        )}
-      </MapContainer>
+            </CircleMarker>
+          )}
+        </MapContainer>
+      </div>
 
-      {validStops.length ===
-        0 && (
-        <div className="border-t border-[#DCE5E0] bg-[#F7FAF8] px-4 py-3 text-sm text-[#66756D]">
-          Add destinations
-          with valid coordinates
-          to display them on
-          the map.
+      {isPickingLocation ? (
+        <div className="border-t border-[#BFD9CD] bg-[#EEF7F2] px-4 py-3 text-sm font-medium text-[#0F6B4D]">
+          Map selection mode is
+          active. The amber marker is
+          the location currently being
+          selected.
         </div>
-      )}
+      ) : validStops.length ===
+        0 ? (
+        <div className="border-t border-[#DCE5E0] bg-[#F7FAF8] px-4 py-3 text-sm text-[#66756D]">
+          Add destinations with valid
+          coordinates to display them
+          on the map.
+        </div>
+      ) : null}
     </div>
   );
 }
