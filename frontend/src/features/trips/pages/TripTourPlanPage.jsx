@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
 } from 'react';
 
@@ -22,6 +23,9 @@ import {
 import {
   getRouteForStops,
 } from '../api/osrmApi';
+
+const ADD_STOP_MAP_OWNER =
+  'add-stop';
 
 function formatDate(value) {
   if (!value) {
@@ -76,8 +80,41 @@ function formatDuration(
   return `${hours} hr ${minutes} min`;
 }
 
+function hasLocationCoordinates(
+  location
+) {
+  if (!location) {
+    return false;
+  }
+
+  const latitude =
+    Number(
+      location.latitude
+    );
+
+  const longitude =
+    Number(
+      location.longitude
+    );
+
+  return (
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180
+  );
+}
+
 function TripTourPlanPage() {
   const { tripId } = useParams();
+
+  const mapPickHandlerRef =
+    useRef(null);
+
+  const mapPickOwnerRef =
+    useRef('');
 
   const [
     trip,
@@ -148,6 +185,99 @@ function TripTourPlanPage() {
     routeError,
     setRouteError,
   ] = useState('');
+
+  const [
+    mapPickOwner,
+    setMapPickOwner,
+  ] = useState('');
+
+  const [
+    draftMapLocation,
+    setDraftMapLocation,
+  ] = useState(null);
+
+  function stopMapPicking(
+    owner = ''
+  ) {
+    if (
+      owner &&
+      mapPickOwnerRef.current !==
+        owner
+    ) {
+      return;
+    }
+
+    mapPickOwnerRef.current =
+      '';
+
+    mapPickHandlerRef.current =
+      null;
+
+    setMapPickOwner('');
+    setDraftMapLocation(null);
+  }
+
+  function startMapPicking(
+    owner,
+    payload
+  ) {
+    mapPickOwnerRef.current =
+      owner;
+
+    mapPickHandlerRef.current =
+      payload?.onLocationPicked ||
+      null;
+
+    setMapPickOwner(owner);
+
+    if (
+      hasLocationCoordinates(
+        payload?.currentLocation
+      )
+    ) {
+      setDraftMapLocation({
+        latitude:
+          Number(
+            payload.currentLocation
+              .latitude
+          ),
+
+        longitude:
+          Number(
+            payload.currentLocation
+              .longitude
+          ),
+      });
+    } else {
+      setDraftMapLocation(null);
+    }
+  }
+
+  function handleMainMapLocationPicked(
+    coordinates
+  ) {
+    const nextLocation = {
+      latitude:
+        coordinates.latitude,
+
+      longitude:
+        coordinates.longitude,
+
+      displayName:
+        'Point selected directly on the main trip map',
+
+      source:
+        'map',
+    };
+
+    setDraftMapLocation(
+      nextLocation
+    );
+
+    mapPickHandlerRef.current?.(
+      nextLocation
+    );
+  }
 
   useEffect(() => {
     let ignoreResult = false;
@@ -328,6 +458,10 @@ function TripTourPlanPage() {
   function handleStopAdded(
     newStop
   ) {
+    stopMapPicking(
+      ADD_STOP_MAP_OWNER
+    );
+
     setStops(
       (currentStops) =>
         [
@@ -347,6 +481,8 @@ function TripTourPlanPage() {
   function handleStopUpdated(
     updatedStop
   ) {
+    stopMapPicking();
+
     setStops(
       (currentStops) =>
         currentStops.map(
@@ -369,6 +505,8 @@ function TripTourPlanPage() {
       event.preventDefault();
       return;
     }
+
+    stopMapPicking();
 
     event.dataTransfer.effectAllowed =
       'move';
@@ -508,6 +646,8 @@ function TripTourPlanPage() {
       return;
     }
 
+    stopMapPicking();
+
     setDeletingStopId(
       stop._id
     );
@@ -572,6 +712,9 @@ function TripTourPlanPage() {
         selectedDayId
     );
 
+  const isPickingLocation =
+    Boolean(mapPickOwner);
+
   return (
     <div>
       <div>
@@ -622,6 +765,8 @@ function TripTourPlanPage() {
                   isReordering
                 }
                 onClick={() => {
+                  stopMapPicking();
+
                   setSelectedDayId(
                     day._id
                   );
@@ -648,8 +793,8 @@ function TripTourPlanPage() {
         </div>
       </section>
 
-      <section className="mt-6 grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="rounded-xl border border-[#DCE5E0] bg-white p-5 shadow-sm">
+      <section className="mt-6 grid min-w-0 gap-5 xl:grid-cols-[440px_minmax(0,1fr)]">
+        <div className="min-w-0 rounded-xl border border-[#DCE5E0] bg-white p-5 shadow-sm">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="font-bold text-[#17211D]">
@@ -702,167 +847,195 @@ function TripTourPlanPage() {
             ) : (
               <div className="space-y-3">
                 {stops.map(
-                  (stop) => (
-                    <article
-                      key={
-                        stop._id
-                      }
-                      draggable={
-                        !isReordering &&
-                        !editingStopId &&
-                        deletingStopId !==
+                  (stop) => {
+                    const editMapOwner =
+                      `edit-stop-${stop._id}`;
+
+                    return (
+                      <article
+                        key={
                           stop._id
-                      }
-                      onDragStart={(
-                        event
-                      ) =>
-                        handleDragStart(
-                          event,
+                        }
+                        draggable={
+                          !isReordering &&
+                          !editingStopId &&
+                          deletingStopId !==
+                            stop._id
+                        }
+                        onDragStart={(
+                          event
+                        ) =>
+                          handleDragStart(
+                            event,
+                            stop._id
+                          )
+                        }
+                        onDragEnd={
+                          handleDragEnd
+                        }
+                        onDragOver={(
+                          event
+                        ) => {
+                          event.preventDefault();
+
+                          event.dataTransfer.dropEffect =
+                            'move';
+                        }}
+                        onDrop={(
+                          event
+                        ) =>
+                          void handleDrop(
+                            event,
+                            stop._id
+                          )
+                        }
+                        className={[
+                          'min-w-0 rounded-lg border p-4 transition',
+                          draggingStopId ===
                           stop._id
-                        )
-                      }
-                      onDragEnd={
-                        handleDragEnd
-                      }
-                      onDragOver={(
-                        event
-                      ) => {
-                        event.preventDefault();
-
-                        event.dataTransfer.dropEffect =
-                          'move';
-                      }}
-                      onDrop={(
-                        event
-                      ) =>
-                        void handleDrop(
-                          event,
-                          stop._id
-                        )
-                      }
-                      className={[
-                        'rounded-lg border p-4 transition',
-                        draggingStopId ===
-                        stop._id
-                          ? 'border-[#0F6B4D] bg-[#EEF7F2] opacity-60'
-                          : 'border-[#E1E8E4] bg-white',
-                        isReordering
-                          ? 'cursor-wait'
-                          : editingStopId
-                            ? 'cursor-default'
-                            : 'cursor-move',
-                      ].join(' ')}
-                    >
-                      <div className="flex gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0F6B4D] text-sm font-bold text-white">
-                          {
-                            stop.order
-                          }
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <p className="mb-2 text-xs font-medium text-[#8A9891]">
-                            Drag to
-                            reorder
-                          </p>
-
-                          <div className="flex items-start justify-between gap-3">
-                            <h3 className="font-semibold text-[#17211D]">
-                              {
-                                stop.placeName
-                              }
-                            </h3>
-
-                            <div className="flex shrink-0 gap-2">
-                              <button
-                                type="button"
-                                disabled={
-                                  isReordering
-                                }
-                                onClick={() =>
-                                  setEditingStopId(
-                                    (
-                                      currentId
-                                    ) =>
-                                      currentId ===
-                                      stop._id
-                                        ? ''
-                                        : stop._id
-                                  )
-                                }
-                                className="rounded-md border border-[#BCD6C9] px-2.5 py-1 text-xs font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2] disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {editingStopId ===
-                                stop._id
-                                  ? 'Close'
-                                  : 'Edit'}
-                              </button>
-
-                              <button
-                                type="button"
-                                disabled={
-                                  isReordering ||
-                                  deletingStopId ===
-                                    stop._id
-                                }
-                                onClick={() =>
-                                  handleDeleteStop(
-                                    stop
-                                  )
-                                }
-                                className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {deletingStopId ===
-                                stop._id
-                                  ? 'Deleting...'
-                                  : 'Delete'}
-                              </button>
-                            </div>
+                            ? 'border-[#0F6B4D] bg-[#EEF7F2] opacity-60'
+                            : 'border-[#E1E8E4] bg-white',
+                          isReordering
+                            ? 'cursor-wait'
+                            : editingStopId
+                              ? 'cursor-default'
+                              : 'cursor-move',
+                        ].join(' ')}
+                      >
+                        <div className="flex min-w-0 gap-3">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0F6B4D] text-sm font-bold text-white">
+                            {
+                              stop.order
+                            }
                           </div>
 
-                          {stop.visitTime && (
-                            <p className="mt-1 text-sm text-[#66756D]">
-                              Visit time:{' '}
-                              {
-                                stop.visitTime
-                              }
+                          <div className="min-w-0 flex-1">
+                            <p className="mb-2 text-xs font-medium text-[#8A9891]">
+                              Drag to
+                              reorder
                             </p>
-                          )}
 
-                          {stop.description && (
-                            <p className="mt-2 text-sm text-[#66756D]">
-                              {
-                                stop.description
-                              }
-                            </p>
-                          )}
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <h3 className="min-w-0 flex-1 break-words font-semibold text-[#17211D]">
+                                {
+                                  stop.placeName
+                                }
+                              </h3>
 
-                          {editingStopId ===
-                            stop._id && (
-                            <EditStopForm
-                              tripId={
-                                tripId
-                              }
-                              dayId={
-                                selectedDayId
-                              }
-                              stop={
-                                stop
-                              }
-                              onStopUpdated={
-                                handleStopUpdated
-                              }
-                              onCancel={() =>
-                                setEditingStopId(
-                                  ''
-                                )
-                              }
-                            />
-                          )}
+                              <div className="flex shrink-0 gap-2">
+                                <button
+                                  type="button"
+                                  disabled={
+                                    isReordering
+                                  }
+                                  onClick={() => {
+                                    stopMapPicking();
+
+                                    setEditingStopId(
+                                      (
+                                        currentId
+                                      ) =>
+                                        currentId ===
+                                        stop._id
+                                          ? ''
+                                          : stop._id
+                                    );
+                                  }}
+                                  className="rounded-md border border-[#BCD6C9] px-2.5 py-1 text-xs font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2] disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {editingStopId ===
+                                  stop._id
+                                    ? 'Close'
+                                    : 'Edit'}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={
+                                    isReordering ||
+                                    deletingStopId ===
+                                      stop._id
+                                  }
+                                  onClick={() =>
+                                    handleDeleteStop(
+                                      stop
+                                    )
+                                  }
+                                  className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {deletingStopId ===
+                                  stop._id
+                                    ? 'Deleting...'
+                                    : 'Delete'}
+                                </button>
+                              </div>
+                            </div>
+
+                            {stop.visitTime && (
+                              <p className="mt-1 text-sm text-[#66756D]">
+                                Visit time:{' '}
+                                {
+                                  stop.visitTime
+                                }
+                              </p>
+                            )}
+
+                            {stop.description && (
+                              <p className="mt-2 break-words text-sm text-[#66756D]">
+                                {
+                                  stop.description
+                                }
+                              </p>
+                            )}
+
+                            {editingStopId ===
+                              stop._id && (
+                              <EditStopForm
+                                tripId={
+                                  tripId
+                                }
+                                dayId={
+                                  selectedDayId
+                                }
+                                stop={
+                                  stop
+                                }
+                                isMapPicking={
+                                  mapPickOwner ===
+                                  editMapOwner
+                                }
+                                onStartMapPicking={(
+                                  payload
+                                ) =>
+                                  startMapPicking(
+                                    editMapOwner,
+                                    payload
+                                  )
+                                }
+                                onStopMapPicking={() =>
+                                  stopMapPicking(
+                                    editMapOwner
+                                  )
+                                }
+                                onStopUpdated={
+                                  handleStopUpdated
+                                }
+                                onCancel={() => {
+                                  stopMapPicking(
+                                    editMapOwner
+                                  );
+
+                                  setEditingStopId(
+                                    ''
+                                  );
+                                }}
+                              />
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </article>
-                  )
+                      </article>
+                    );
+                  }
                 )}
               </div>
             )}
@@ -873,13 +1046,30 @@ function TripTourPlanPage() {
             dayId={
               selectedDayId
             }
+            isMapPicking={
+              mapPickOwner ===
+              ADD_STOP_MAP_OWNER
+            }
+            onStartMapPicking={(
+              payload
+            ) =>
+              startMapPicking(
+                ADD_STOP_MAP_OWNER,
+                payload
+              )
+            }
+            onStopMapPicking={() =>
+              stopMapPicking(
+                ADD_STOP_MAP_OWNER
+              )
+            }
             onStopAdded={
               handleStopAdded
             }
           />
         </div>
 
-        <div>
+        <div className="min-w-0 xl:sticky xl:top-24 xl:self-start">
           <div className="mb-4 rounded-xl border border-[#DCE5E0] bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -891,10 +1081,16 @@ function TripTourPlanPage() {
                   <p className="mt-1 text-sm font-semibold text-[#0F6B4D]">
                     Calculating route...
                   </p>
+                ) : routeError ? (
+                  <p className="mt-1 text-sm font-semibold text-amber-700">
+                    Driving route
+                    unavailable
+                  </p>
                 ) : routeData ? (
                   <p className="mt-1 text-sm text-[#44524B]">
-                    OSRM route
-                    calculated successfully.
+                    Driving route
+                    calculated
+                    successfully.
                   </p>
                 ) : (
                   <p className="mt-1 text-sm text-[#66756D]">
@@ -906,51 +1102,62 @@ function TripTourPlanPage() {
                 )}
               </div>
 
-              {routeData && (
-                <div className="flex gap-2">
-                  <div className="rounded-lg bg-[#EEF7F2] px-3 py-2 text-center">
-                    <p className="text-xs text-[#66756D]">
-                      Distance
-                    </p>
+              {routeData &&
+                !routeError && (
+                  <div className="flex gap-2">
+                    <div className="rounded-lg bg-[#EEF7F2] px-3 py-2 text-center">
+                      <p className="text-xs text-[#66756D]">
+                        Distance
+                      </p>
 
-                    <p className="mt-0.5 text-sm font-bold text-[#0F6B4D]">
-                      {formatDistance(
-                        routeData
-                          .distanceMeters
-                      )}
-                    </p>
+                      <p className="mt-0.5 text-sm font-bold text-[#0F6B4D]">
+                        {formatDistance(
+                          routeData
+                            .distanceMeters
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="rounded-lg bg-[#EEF7F2] px-3 py-2 text-center">
+                      <p className="text-xs text-[#66756D]">
+                        Travel time
+                      </p>
+
+                      <p className="mt-0.5 text-sm font-bold text-[#0F6B4D]">
+                        {formatDuration(
+                          routeData
+                            .durationSeconds
+                        )}
+                      </p>
+                    </div>
                   </div>
-
-                  <div className="rounded-lg bg-[#EEF7F2] px-3 py-2 text-center">
-                    <p className="text-xs text-[#66756D]">
-                      Travel time
-                    </p>
-
-                    <p className="mt-0.5 text-sm font-bold text-[#0F6B4D]">
-                      {formatDuration(
-                        routeData
-                          .durationSeconds
-                      )}
-                    </p>
-                  </div>
-                </div>
-              )}
+                )}
             </div>
 
             {routeError && (
-              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-5 text-amber-700">
                 {routeError}
               </div>
             )}
           </div>
 
-            <TripMap
+          <TripMap
             stops={stops}
             routePoints={
-                routeData?.routePoints ||
-                []
+              routeData
+                ?.routePoints ||
+              []
             }
-            />
+            isPickingLocation={
+              isPickingLocation
+            }
+            pickedLocation={
+              draftMapLocation
+            }
+            onLocationPicked={
+              handleMainMapLocationPicked
+            }
+          />
         </div>
       </section>
     </div>
