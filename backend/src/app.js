@@ -26,6 +26,12 @@ import publicRoomRouter from './routes/publicRoom.routes.js';
 
 import tripRouter from './routes/trip.routes.js';
 
+// Shared image-upload API.
+//
+// Supabase stores the actual image files.
+// MongoDB will continue storing only the resulting URLs.
+import uploadRouter from './routes/upload.routes.js';
+
 const app = express();
 
 // Helmet adds several useful HTTP security headers.
@@ -68,15 +74,10 @@ if (
 
 // Parse JSON request bodies.
 //
-// Example:
+// Normal Ghuraghuri feature requests continue using JSON.
 //
-// {
-//   "roomName": "Cox's Bazar Trip Buddies"
-// }
-//
-// becomes available through:
-//
-// req.body
+// File uploads are multipart/form-data and are processed
+// separately by Multer on the upload route.
 app.use(
   express.json({
     limit: '1mb',
@@ -123,20 +124,6 @@ app.use(
 // All routes inside publicRoomRouter are now available under:
 //
 // /api/v1/public-rooms
-//
-// For example:
-//
-// GET
-// /api/v1/public-rooms
-//
-// POST
-// /api/v1/public-rooms
-//
-// GET
-// /api/v1/public-rooms/mine
-//
-// POST
-// /api/v1/public-rooms/:roomId/join-requests
 app.use(
   '/api/v1/public-rooms',
   publicRoomRouter
@@ -152,6 +139,21 @@ app.use(
 app.use(
   '/api/v1/admin',
   adminRouter
+);
+
+// Shared image/file upload APIs.
+//
+// First implemented use:
+//
+// POST
+// /api/v1/uploads/hotel-images
+//
+// Other project members can later reuse the shared
+// Supabase storage service for their own feature-specific
+// upload routes.
+app.use(
+  '/api/v1/uploads',
+  uploadRouter
 );
 
 // If no route above matched the request,
