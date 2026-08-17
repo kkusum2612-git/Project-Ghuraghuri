@@ -3,20 +3,60 @@ import {
   useState,
 } from 'react';
 
-import { useNavigate } from 'react-router-dom';
+import {
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
+
+import SuccessToast
+  from '../../../components/common/SuccessToast';
 
 import {
   deleteTrip,
   getTrips,
 } from '../api/tripApi';
 
-import TripCard from '../components/TripCard';
-import TripDeleteModal from '../components/TripDeleteModal';
-import TripEmptyState from '../components/TripEmptyState';
+import TripCard
+  from '../components/TripCard';
+
+import TripDeleteModal
+  from '../components/TripDeleteModal';
+
+import TripEmptyState
+  from '../components/TripEmptyState';
 
 function TripDashboardPage() {
   const navigate =
     useNavigate();
+
+  const location =
+    useLocation();
+
+  /*
+   * Create/Edit Trip redirects back to
+   * this page using React Router state.
+   *
+   * Example:
+   *
+   * navigate('/trips', {
+   *   state: {
+   *     successMessage:
+   *       'Trip created successfully.'
+   *   }
+   * });
+   *
+   * We read that message once when the
+   * dashboard is opened.
+   */
+  const [
+    successMessage,
+    setSuccessMessage,
+  ] = useState(
+    () =>
+      location.state
+        ?.successMessage ||
+      ''
+  );
 
   const [
     trips,
@@ -42,6 +82,36 @@ function TripDashboardPage() {
     deletingId,
     setDeletingId,
   ] = useState(null);
+
+  /*
+   * Once a success message has been
+   * read from router state, remove that
+   * state from browser history.
+   *
+   * Without this, refreshing the My
+   * Trips page could show the old
+   * success toast again.
+   */
+  useEffect(() => {
+    if (
+      !location.state
+        ?.successMessage
+    ) {
+      return;
+    }
+
+    navigate(
+      location.pathname,
+      {
+        replace: true,
+        state: null,
+      }
+    );
+  }, [
+    location.pathname,
+    location.state,
+    navigate,
+  ]);
 
   useEffect(() => {
     let ignoreResult = false;
@@ -88,7 +158,9 @@ function TripDashboardPage() {
   }, []);
 
   function handleCreateTrip() {
-    navigate('/trips/new');
+    navigate(
+      '/trips/new'
+    );
   }
 
   function handleOpenTrip(
@@ -98,6 +170,7 @@ function TripDashboardPage() {
       `/trips/${trip._id}/plan`
     );
   }
+
   function handleEditTrip(
     trip
   ) {
@@ -106,15 +179,29 @@ function TripDashboardPage() {
     );
   }
 
+  /*
+   * Clicking Delete does NOT call the
+   * backend immediately.
+   *
+   * It stores the trip first so the
+   * custom confirmation modal can be
+   * displayed.
+   */
   function handleDeleteRequest(
     trip
   ) {
-    setTripToDelete(trip);
+    setTripToDelete(
+      trip
+    );
+
+    setPageError('');
   }
 
   function handleDeleteCancel() {
     if (!deletingId) {
-      setTripToDelete(null);
+      setTripToDelete(
+        null
+      );
     }
   }
 
@@ -123,27 +210,53 @@ function TripDashboardPage() {
       return;
     }
 
+    /*
+     * Save the name before clearing the
+     * selected trip.
+     *
+     * We use it in the success toast
+     * after deletion completes.
+     */
+    const deletedTripName =
+      tripToDelete.tripName;
+
+    const deletedTripId =
+      tripToDelete._id;
+
     setDeletingId(
-      tripToDelete._id
+      deletedTripId
     );
 
     setPageError('');
 
     try {
       await deleteTrip(
-        tripToDelete._id
+        deletedTripId
       );
 
+      /*
+       * Remove the deleted trip from
+       * local React state immediately.
+       *
+       * This avoids an unnecessary full
+       * page refresh.
+       */
       setTrips(
         (currentTrips) =>
           currentTrips.filter(
             (trip) =>
               trip._id !==
-              tripToDelete._id
+              deletedTripId
           )
       );
 
-      setTripToDelete(null);
+      setTripToDelete(
+        null
+      );
+
+      setSuccessMessage(
+        `Trip "${deletedTripName}" deleted successfully.`
+      );
     } catch (error) {
       setPageError(
         error.response?.data
@@ -151,7 +264,9 @@ function TripDashboardPage() {
           'Unable to delete this trip.'
       );
     } finally {
-      setDeletingId(null);
+      setDeletingId(
+        null
+      );
     }
   }
 
@@ -167,6 +282,17 @@ function TripDashboardPage() {
 
   return (
     <div>
+      <SuccessToast
+        message={
+          successMessage
+        }
+        onClose={() =>
+          setSuccessMessage(
+            ''
+          )
+        }
+      />
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[#17211D] md:text-3xl">
@@ -191,7 +317,10 @@ function TripDashboardPage() {
       </div>
 
       {pageError && (
-        <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div
+          className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          role="alert"
+        >
           {pageError}
         </div>
       )}
@@ -208,12 +337,15 @@ function TripDashboardPage() {
             {trips.map(
               (trip) => (
                 <TripCard
-                  key={trip._id}
-                  trip={trip}
+                  key={
+                    trip._id
+                  }
+                  trip={
+                    trip
+                  }
                   onOpen={
-                      handleOpenTrip
-                    }
-
+                    handleOpenTrip
+                  }
                   onEdit={
                     handleEditTrip
                   }
@@ -232,7 +364,9 @@ function TripDashboardPage() {
       </section>
 
       <TripDeleteModal
-        trip={tripToDelete}
+        trip={
+          tripToDelete
+        }
         isDeleting={Boolean(
           deletingId
         )}
