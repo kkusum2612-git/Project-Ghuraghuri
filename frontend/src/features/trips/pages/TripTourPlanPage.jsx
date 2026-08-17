@@ -8,9 +8,20 @@ import {
   useParams,
 } from 'react-router-dom';
 
-import AddStopForm from '../components/AddStopForm';
-import EditStopForm from '../components/EditStopForm';
-import TripMap from '../components/TripMap';
+import ConfirmModal
+  from '../../../components/common/ConfirmModal';
+
+import SuccessToast
+  from '../../../components/common/SuccessToast';
+
+import AddStopForm
+  from '../components/AddStopForm';
+
+import EditStopForm
+  from '../components/EditStopForm';
+
+import TripMap
+  from '../components/TripMap';
 
 import {
   deleteStop,
@@ -39,7 +50,9 @@ function formatDate(value) {
       month: 'short',
       year: 'numeric',
     }
-  ).format(new Date(value));
+  ).format(
+    new Date(value)
+  );
 }
 
 function formatDistance(
@@ -98,8 +111,12 @@ function hasLocationCoordinates(
     );
 
   return (
-    Number.isFinite(latitude) &&
-    Number.isFinite(longitude) &&
+    Number.isFinite(
+      latitude
+    ) &&
+    Number.isFinite(
+      longitude
+    ) &&
     latitude >= -90 &&
     latitude <= 90 &&
     longitude >= -180 &&
@@ -108,8 +125,17 @@ function hasLocationCoordinates(
 }
 
 function TripTourPlanPage() {
-  const { tripId } = useParams();
+  const { tripId } =
+    useParams();
 
+  /*
+   * These refs connect the active
+   * Add/Edit location picker to the
+   * one shared TripMap.
+   *
+   * Only one form can own map-picking
+   * mode at a time.
+   */
   const mapPickHandlerRef =
     useRef(null);
 
@@ -151,6 +177,39 @@ function TripTourPlanPage() {
     setPageError,
   ] = useState('');
 
+  /*
+   * This success message is shared by:
+   *
+   * - Add Destination
+   * - Edit Destination
+   * - Delete Destination
+   *
+   * SuccessToast automatically removes
+   * itself after a short delay.
+   */
+  const [
+    successMessage,
+    setSuccessMessage,
+  ] = useState('');
+
+  /*
+   * stopToDelete controls whether our
+   * custom confirmation modal is open.
+   *
+   * This replaces window.confirm().
+   */
+  const [
+    stopToDelete,
+    setStopToDelete,
+  ] = useState(null);
+
+  /*
+   * deletingStopId tracks the actual
+   * DELETE request.
+   *
+   * It lets us disable actions while the
+   * backend operation is running.
+   */
   const [
     deletingStopId,
     setDeletingStopId,
@@ -196,6 +255,16 @@ function TripTourPlanPage() {
     setDraftMapLocation,
   ] = useState(null);
 
+  /*
+   * Stop the shared map from acting as
+   * a location picker.
+   *
+   * owner is optional.
+   *
+   * If an owner is supplied, only that
+   * form is allowed to stop its own
+   * map-picking session.
+   */
   function stopMapPicking(
     owner = ''
   ) {
@@ -214,9 +283,16 @@ function TripTourPlanPage() {
       null;
 
     setMapPickOwner('');
-    setDraftMapLocation(null);
+    setDraftMapLocation(
+      null
+    );
   }
 
+  /*
+   * Enable location picking on the main
+   * TripMap for either AddStopForm or an
+   * EditStopForm.
+   */
   function startMapPicking(
     owner,
     payload
@@ -225,11 +301,19 @@ function TripTourPlanPage() {
       owner;
 
     mapPickHandlerRef.current =
-      payload?.onLocationPicked ||
+      payload
+        ?.onLocationPicked ||
       null;
 
-    setMapPickOwner(owner);
+    setMapPickOwner(
+      owner
+    );
 
+    /*
+     * When editing an existing stop,
+     * show its current coordinate as the
+     * temporary selection marker.
+     */
     if (
       hasLocationCoordinates(
         payload?.currentLocation
@@ -238,21 +322,30 @@ function TripTourPlanPage() {
       setDraftMapLocation({
         latitude:
           Number(
-            payload.currentLocation
+            payload
+              .currentLocation
               .latitude
           ),
 
         longitude:
           Number(
-            payload.currentLocation
+            payload
+              .currentLocation
               .longitude
           ),
       });
     } else {
-      setDraftMapLocation(null);
+      setDraftMapLocation(
+        null
+      );
     }
   }
 
+  /*
+   * Called by TripMap when the traveler
+   * clicks the map while location-picking
+   * mode is active.
+   */
   function handleMainMapLocationPicked(
     coordinates
   ) {
@@ -279,28 +372,43 @@ function TripTourPlanPage() {
     );
   }
 
+  /*
+   * Load the main trip plus all day
+   * records when this page opens.
+   */
   useEffect(() => {
-    let ignoreResult = false;
+    let ignoreResult =
+      false;
 
     async function loadTripPlan() {
-      setIsLoading(true);
+      setIsLoading(
+        true
+      );
+
       setPageError('');
 
       try {
         const [
           tripResult,
           daysResult,
-        ] = await Promise.all([
-          getTripById(tripId),
-          getTripDays(tripId),
-        ]);
+        ] =
+          await Promise.all([
+            getTripById(
+              tripId
+            ),
+
+            getTripDays(
+              tripId
+            ),
+          ]);
 
         if (ignoreResult) {
           return;
         }
 
         setTrip(
-          tripResult?.data || null
+          tripResult?.data ||
+            null
         );
 
         const tripDays =
@@ -310,7 +418,9 @@ function TripTourPlanPage() {
             ? daysResult.data
             : [];
 
-        setDays(tripDays);
+        setDays(
+          tripDays
+        );
 
         if (
           tripDays.length > 0
@@ -322,14 +432,17 @@ function TripTourPlanPage() {
       } catch (error) {
         if (!ignoreResult) {
           setPageError(
-            error.response?.data
+            error.response
+              ?.data
               ?.message ||
               'Unable to load the trip plan.'
           );
         }
       } finally {
         if (!ignoreResult) {
-          setIsLoading(false);
+          setIsLoading(
+            false
+          );
         }
       }
     }
@@ -337,19 +450,31 @@ function TripTourPlanPage() {
     void loadTripPlan();
 
     return () => {
-      ignoreResult = true;
+      ignoreResult =
+        true;
     };
   }, [tripId]);
 
+  /*
+   * Whenever the selected day changes,
+   * load that day's stops from the
+   * backend.
+   */
   useEffect(() => {
-    if (!selectedDayId) {
+    if (
+      !selectedDayId
+    ) {
       return;
     }
 
-    let ignoreResult = false;
+    let ignoreResult =
+      false;
 
     async function loadStops() {
-      setIsLoadingStops(true);
+      setIsLoadingStops(
+        true
+      );
+
       setPageError('');
 
       try {
@@ -365,7 +490,8 @@ function TripTourPlanPage() {
 
         setStops(
           Array.isArray(
-            result?.data?.stops
+            result?.data
+              ?.stops
           )
             ? result.data.stops
             : []
@@ -373,14 +499,17 @@ function TripTourPlanPage() {
       } catch (error) {
         if (!ignoreResult) {
           setPageError(
-            error.response?.data
+            error.response
+              ?.data
               ?.message ||
               'Unable to load the stops for this day.'
           );
         }
       } finally {
         if (!ignoreResult) {
-          setIsLoadingStops(false);
+          setIsLoadingStops(
+            false
+          );
         }
       }
     }
@@ -388,21 +517,39 @@ function TripTourPlanPage() {
     void loadStops();
 
     return () => {
-      ignoreResult = true;
+      ignoreResult =
+        true;
     };
   }, [
     tripId,
     selectedDayId,
   ]);
 
+  /*
+   * Every time the ordered stops change,
+   * ask OSRM for a fresh route.
+   *
+   * This means:
+   *
+   * add stop
+   * edit coordinates
+   * delete stop
+   * reorder stops
+   *
+   * all automatically update the route.
+   */
   useEffect(() => {
     const controller =
       new AbortController();
 
-    let ignoreResult = false;
+    let ignoreResult =
+      false;
 
     async function loadRoute() {
-      setIsLoadingRoute(true);
+      setIsLoadingRoute(
+        true
+      );
+
       setRouteError('');
 
       try {
@@ -431,7 +578,9 @@ function TripTourPlanPage() {
         }
 
         if (!ignoreResult) {
-          setRouteData(null);
+          setRouteData(
+            null
+          );
 
           setRouteError(
             error.message ||
@@ -450,11 +599,21 @@ function TripTourPlanPage() {
     void loadRoute();
 
     return () => {
-      ignoreResult = true;
+      ignoreResult =
+        true;
+
       controller.abort();
     };
   }, [stops]);
 
+  /*
+   * AddStopForm calls this only after
+   * the backend successfully creates a
+   * stop.
+   *
+   * Therefore this is the correct place
+   * to display an Add success toast.
+   */
   function handleStopAdded(
     newStop
   ) {
@@ -476,8 +635,16 @@ function TripTourPlanPage() {
             second.order
         )
     );
+
+    setSuccessMessage(
+      `Destination "${newStop.placeName}" added successfully.`
+    );
   }
 
+  /*
+   * EditStopForm calls this only after a
+   * successful PATCH request.
+   */
   function handleStopUpdated(
     updatedStop
   ) {
@@ -494,7 +661,13 @@ function TripTourPlanPage() {
         )
     );
 
-    setEditingStopId('');
+    setEditingStopId(
+      ''
+    );
+
+    setSuccessMessage(
+      `Destination "${updatedStop.placeName}" updated successfully.`
+    );
   }
 
   function handleDragStart(
@@ -508,25 +681,41 @@ function TripTourPlanPage() {
 
     stopMapPicking();
 
-    event.dataTransfer.effectAllowed =
+    event.dataTransfer
+      .effectAllowed =
       'move';
 
-    event.dataTransfer.setData(
-      'text/plain',
-      stopId
-    );
+    event.dataTransfer
+      .setData(
+        'text/plain',
+        stopId
+      );
 
     setDraggingStopId(
       stopId
     );
 
-    setEditingStopId('');
+    setEditingStopId(
+      ''
+    );
   }
 
   function handleDragEnd() {
-    setDraggingStopId('');
+    setDraggingStopId(
+      ''
+    );
   }
 
+  /*
+   * Reordering first happens locally so
+   * the interface feels responsive.
+   *
+   * Then the new order is persisted to
+   * MongoDB through the backend.
+   *
+   * If the request fails, the old order
+   * is restored.
+   */
   async function handleDrop(
     event,
     targetStopId
@@ -539,7 +728,10 @@ function TripTourPlanPage() {
         targetStopId ||
       isReordering
     ) {
-      setDraggingStopId('');
+      setDraggingStopId(
+        ''
+      );
+
       return;
     }
 
@@ -565,7 +757,10 @@ function TripTourPlanPage() {
       draggedIndex === -1 ||
       targetIndex === -1
     ) {
-      setDraggingStopId('');
+      setDraggingStopId(
+        ''
+      );
+
       return;
     }
 
@@ -575,10 +770,11 @@ function TripTourPlanPage() {
 
     const [
       draggedStop,
-    ] = reorderedStops.splice(
-      draggedIndex,
-      1
-    );
+    ] =
+      reorderedStops.splice(
+        draggedIndex,
+        1
+      );
 
     reorderedStops.splice(
       targetIndex,
@@ -588,9 +784,13 @@ function TripTourPlanPage() {
 
     const locallyRenumbered =
       reorderedStops.map(
-        (stop, index) => ({
+        (
+          stop,
+          index
+        ) => ({
           ...stop,
-          order: index + 1,
+          order:
+            index + 1,
         })
       );
 
@@ -598,8 +798,14 @@ function TripTourPlanPage() {
       locallyRenumbered
     );
 
-    setDraggingStopId('');
-    setIsReordering(true);
+    setDraggingStopId(
+      ''
+    );
+
+    setIsReordering(
+      true
+    );
+
     setPageError('');
 
     try {
@@ -608,7 +814,8 @@ function TripTourPlanPage() {
           tripId,
           selectedDayId,
           locallyRenumbered.map(
-            (stop) => stop._id
+            (stop) =>
+              stop._id
           )
         );
 
@@ -625,43 +832,101 @@ function TripTourPlanPage() {
       );
 
       setPageError(
-        error.response?.data
+        error.response
+          ?.data
           ?.message ||
           'Unable to reorder the itinerary.'
       );
     } finally {
-      setIsReordering(false);
+      setIsReordering(
+        false
+      );
     }
   }
 
-  async function handleDeleteStop(
+  /*
+   * DELETE NOW USES TWO STEPS.
+   *
+   * Step 1:
+   * User clicks Delete.
+   *
+   * We only save the selected stop and
+   * open ConfirmModal.
+   *
+   * No backend DELETE happens yet.
+   */
+  function handleDeleteRequest(
     stop
   ) {
-    const confirmed =
-      window.confirm(
-        `Delete "${stop.placeName}" from this day?`
-      );
+    stopMapPicking();
 
-    if (!confirmed) {
+    setEditingStopId(
+      ''
+    );
+
+    setPageError('');
+
+    setStopToDelete(
+      stop
+    );
+  }
+
+  /*
+   * Close the confirmation modal without
+   * deleting anything.
+   */
+  function handleDeleteCancel() {
+    if (
+      deletingStopId
+    ) {
       return;
     }
 
-    stopMapPicking();
+    setStopToDelete(
+      null
+    );
+  }
+
+  /*
+   * Step 2:
+   * This runs only after the traveler
+   * presses Delete Destination inside
+   * our custom confirmation modal.
+   */
+  async function handleDeleteConfirm() {
+    if (
+      !stopToDelete
+    ) {
+      return;
+    }
+
+    const deletedStopId =
+      stopToDelete._id;
+
+    const deletedStopName =
+      stopToDelete.placeName;
 
     setDeletingStopId(
-      stop._id
+      deletedStopId
     );
 
-    setEditingStopId('');
     setPageError('');
 
     try {
       await deleteStop(
         tripId,
         selectedDayId,
-        stop._id
+        deletedStopId
       );
 
+      /*
+       * Reload the day after deletion.
+       *
+       * The backend also resequences the
+       * remaining stop order, so fetching
+       * again guarantees that React gets
+       * the authoritative order.
+       */
       const result =
         await getDayStops(
           tripId,
@@ -675,14 +940,34 @@ function TripTourPlanPage() {
           ? result.data.stops
           : []
       );
+
+      setStopToDelete(
+        null
+      );
+
+      setSuccessMessage(
+        `Destination "${deletedStopName}" deleted successfully.`
+      );
     } catch (error) {
+      /*
+       * Close the modal after a failed
+       * request so the traveler can see
+       * the normal page error message.
+       */
+      setStopToDelete(
+        null
+      );
+
       setPageError(
-        error.response?.data
+        error.response
+          ?.data
           ?.message ||
           'Unable to delete the stop.'
       );
     } finally {
-      setDeletingStopId('');
+      setDeletingStopId(
+        ''
+      );
     }
   }
 
@@ -713,10 +998,27 @@ function TripTourPlanPage() {
     );
 
   const isPickingLocation =
-    Boolean(mapPickOwner);
+    Boolean(
+      mapPickOwner
+    );
 
   return (
     <div>
+      {/*
+       * Shared success toast for all stop
+       * create/update/delete actions.
+       */}
+      <SuccessToast
+        message={
+          successMessage
+        }
+        onClose={() =>
+          setSuccessMessage(
+            ''
+          )
+        }
+      />
+
       <div>
         <p className="text-sm font-semibold uppercase tracking-wide text-[#0F6B4D]">
           Tour Plan
@@ -727,7 +1029,8 @@ function TripTourPlanPage() {
         </h1>
 
         <p className="mt-2 text-sm text-[#66756D]">
-          {trip.destination?.name ||
+          {trip.destination
+            ?.name ||
             'Destination not specified'}
           {' • '}
           {formatDate(
@@ -741,7 +1044,10 @@ function TripTourPlanPage() {
       </div>
 
       {pageError && (
-        <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div
+          className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          role="alert"
+        >
           {pageError}
         </div>
       )}
@@ -752,44 +1058,61 @@ function TripTourPlanPage() {
         </h2>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          {days.map((day) => {
-            const isSelected =
-              day._id ===
-              selectedDayId;
+          {days.map(
+            (day) => {
+              const isSelected =
+                day._id ===
+                selectedDayId;
 
-            return (
-              <button
-                key={day._id}
-                type="button"
-                disabled={
-                  isReordering
-                }
-                onClick={() => {
-                  stopMapPicking();
-
-                  setSelectedDayId(
+              return (
+                <button
+                  key={
                     day._id
-                  );
+                  }
+                  type="button"
+                  disabled={
+                    isReordering ||
+                    Boolean(
+                      deletingStopId
+                    )
+                  }
+                  onClick={() => {
+                    stopMapPicking();
 
-                  setEditingStopId(
-                    ''
-                  );
+                    setStopToDelete(
+                      null
+                    );
 
-                  setDraggingStopId(
-                    ''
-                  );
-                }}
-                className={[
-                  'rounded-lg border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60',
-                  isSelected
-                    ? 'border-[#0F6B4D] bg-[#0F6B4D] text-white'
-                    : 'border-[#DCE5E0] bg-white text-[#44524B] hover:bg-[#EEF7F2]',
-                ].join(' ')}
-              >
-                Day {day.dayNumber}
-              </button>
-            );
-          })}
+                    setSelectedDayId(
+                      day._id
+                    );
+
+                    setEditingStopId(
+                      ''
+                    );
+
+                    setDraggingStopId(
+                      ''
+                    );
+                  }}
+                  className={[
+                    'rounded-lg border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60',
+
+                    isSelected
+                      ? 'border-[#0F6B4D] bg-[#0F6B4D] text-white'
+                      : 'border-[#DCE5E0] bg-white text-[#44524B] hover:bg-[#EEF7F2]',
+                  ].join(
+                    ' '
+                  )}
+                >
+                  Day{' '}
+                  {
+                    day.dayNumber
+                  }
+                </button>
+              );
+            }
+          )}
         </div>
       </section>
 
@@ -799,14 +1122,16 @@ function TripTourPlanPage() {
             <div>
               <h2 className="font-bold text-[#17211D]">
                 Day{' '}
-                {selectedDay?.dayNumber ||
+                {selectedDay
+                  ?.dayNumber ||
                   '—'}
               </h2>
 
               <p className="mt-1 text-sm text-[#66756D]">
                 {selectedDay
                   ? formatDate(
-                      selectedDay.date
+                      selectedDay
+                        .date
                     )
                   : ''}
               </p>
@@ -821,7 +1146,8 @@ function TripTourPlanPage() {
 
             <span className="rounded-full bg-[#EEF7F2] px-3 py-1 text-xs font-semibold text-[#0F6B4D]">
               {stops.length}{' '}
-              {stops.length === 1
+              {stops.length ===
+              1
                 ? 'stop'
                 : 'stops'}
             </span>
@@ -836,12 +1162,14 @@ function TripTourPlanPage() {
               0 ? (
               <div className="rounded-lg border border-dashed border-[#CBD8D1] bg-[#F7FAF8] px-4 py-8 text-center">
                 <p className="text-sm font-semibold text-[#44524B]">
-                  No stops added yet
+                  No stops added
+                  yet
                 </p>
 
                 <p className="mt-1 text-sm text-[#66756D]">
-                  Stops added to this
-                  day will appear here.
+                  Stops added to
+                  this day will
+                  appear here.
                 </p>
               </div>
             ) : (
@@ -859,6 +1187,7 @@ function TripTourPlanPage() {
                         draggable={
                           !isReordering &&
                           !editingStopId &&
+                          !stopToDelete &&
                           deletingStopId !==
                             stop._id
                         }
@@ -878,7 +1207,9 @@ function TripTourPlanPage() {
                         ) => {
                           event.preventDefault();
 
-                          event.dataTransfer.dropEffect =
+                          event
+                            .dataTransfer
+                            .dropEffect =
                             'move';
                         }}
                         onDrop={(
@@ -891,16 +1222,20 @@ function TripTourPlanPage() {
                         }
                         className={[
                           'min-w-0 rounded-lg border p-4 transition',
+
                           draggingStopId ===
                           stop._id
                             ? 'border-[#0F6B4D] bg-[#EEF7F2] opacity-60'
                             : 'border-[#E1E8E4] bg-white',
+
                           isReordering
                             ? 'cursor-wait'
                             : editingStopId
                               ? 'cursor-default'
                               : 'cursor-move',
-                        ].join(' ')}
+                        ].join(
+                          ' '
+                        )}
                       >
                         <div className="flex min-w-0 gap-3">
                           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#0F6B4D] text-sm font-bold text-white">
@@ -926,10 +1261,17 @@ function TripTourPlanPage() {
                                 <button
                                   type="button"
                                   disabled={
-                                    isReordering
+                                    isReordering ||
+                                    Boolean(
+                                      deletingStopId
+                                    )
                                   }
                                   onClick={() => {
                                     stopMapPicking();
+
+                                    setStopToDelete(
+                                      null
+                                    );
 
                                     setEditingStopId(
                                       (
@@ -953,11 +1295,12 @@ function TripTourPlanPage() {
                                   type="button"
                                   disabled={
                                     isReordering ||
-                                    deletingStopId ===
-                                      stop._id
+                                    Boolean(
+                                      deletingStopId
+                                    )
                                   }
                                   onClick={() =>
-                                    handleDeleteStop(
+                                    handleDeleteRequest(
                                       stop
                                     )
                                   }
@@ -973,7 +1316,8 @@ function TripTourPlanPage() {
 
                             {stop.visitTime && (
                               <p className="mt-1 text-sm text-[#66756D]">
-                                Visit time:{' '}
+                                Visit
+                                time:{' '}
                                 {
                                   stop.visitTime
                                 }
@@ -1042,7 +1386,9 @@ function TripTourPlanPage() {
           </div>
 
           <AddStopForm
-            tripId={tripId}
+            tripId={
+              tripId
+            }
             dayId={
               selectedDayId
             }
@@ -1079,7 +1425,8 @@ function TripTourPlanPage() {
 
                 {isLoadingRoute ? (
                   <p className="mt-1 text-sm font-semibold text-[#0F6B4D]">
-                    Calculating route...
+                    Calculating
+                    route...
                   </p>
                 ) : routeError ? (
                   <p className="mt-1 text-sm font-semibold text-amber-700">
@@ -1142,7 +1489,9 @@ function TripTourPlanPage() {
           </div>
 
           <TripMap
-            stops={stops}
+            stops={
+              stops
+            }
             routePoints={
               routeData
                 ?.routePoints ||
@@ -1160,6 +1509,54 @@ function TripTourPlanPage() {
           />
         </div>
       </section>
+
+      {/*
+       * Custom stop deletion popup.
+       *
+       * This completely replaces the old
+       * browser-native window.confirm().
+       */}
+      <ConfirmModal
+        isOpen={Boolean(
+          stopToDelete
+        )}
+        title="Delete destination?"
+        description={
+          stopToDelete ? (
+            <p>
+              Are you sure you
+              want to remove{' '}
+              <span className="font-semibold text-[#17211D]">
+                {
+                  stopToDelete.placeName
+                }
+              </span>{' '}
+              from this day?
+            </p>
+          ) : null
+        }
+        warning={
+          <p>
+            This destination will be
+            permanently removed from
+            the itinerary. Remaining
+            stops will automatically
+            move up in the day&apos;s
+            order.
+          </p>
+        }
+        confirmLabel="Delete Destination"
+        cancelLabel="Cancel"
+        isConfirming={Boolean(
+          deletingStopId
+        )}
+        onCancel={
+          handleDeleteCancel
+        }
+        onConfirm={
+          handleDeleteConfirm
+        }
+      />
     </div>
   );
 }
