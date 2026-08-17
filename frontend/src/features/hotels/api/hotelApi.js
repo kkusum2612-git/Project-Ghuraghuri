@@ -53,6 +53,45 @@ async function getVendorHotelById(hotelId) {
   return response.data;
 }
 
+/*
+ * Upload one or more hotel image files.
+ *
+ * Normal hotel requests use JSON, but actual files must be
+ * sent as multipart/form-data.
+ *
+ * The backend endpoint:
+ *
+ * POST /api/v1/uploads/hotel-images
+ *
+ * uploads the files to Supabase Storage and returns their
+ * public URLs.
+ */
+async function uploadHotelImages(files) {
+  const uploadData =
+    new FormData();
+
+  files.forEach((file) => {
+    uploadData.append(
+      'images',
+      file
+    );
+  });
+
+  const response =
+    await apiClient.post(
+      '/uploads/hotel-images',
+      uploadData,
+      {
+        headers: {
+          'Content-Type':
+            'multipart/form-data',
+        },
+      }
+    );
+
+  return response.data;
+}
+
 async function createHotel(hotelData) {
   const response = await apiClient.post(
     '/hotels',
@@ -62,19 +101,24 @@ async function createHotel(hotelData) {
   return response.data;
 }
 
-async function updateHotel(hotelId, hotelData) {
-  const response = await apiClient.patch(
-    `/hotels/${hotelId}`,
-    hotelData
-  );
+async function updateHotel(
+  hotelId,
+  hotelData
+) {
+  const response =
+    await apiClient.patch(
+      `/hotels/${hotelId}`,
+      hotelData
+    );
 
   return response.data;
 }
 
 async function deleteHotel(hotelId) {
-  const response = await apiClient.delete(
-    `/hotels/${hotelId}`
-  );
+  const response =
+    await apiClient.delete(
+      `/hotels/${hotelId}`
+    );
 
   return response.data;
 }
@@ -88,4 +132,5 @@ export {
   getVendorHotelById,
   getVendorHotels,
   updateHotel,
+  uploadHotelImages,
 };
