@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 
@@ -12,6 +13,7 @@ import {
   createHotel,
   getVendorHotelById,
   updateHotel,
+  uploadHotelImages,
 } from '../api/hotelApi';
 
 const AMENITY_OPTIONS = [
@@ -22,6 +24,18 @@ const AMENITY_OPTIONS = [
   'Sea View',
   'Parking',
 ];
+
+const MAX_PHOTOS = 6;
+
+const MAX_IMAGE_SIZE_BYTES =
+  5 * 1024 * 1024;
+
+const ALLOWED_IMAGE_TYPES =
+  new Set([
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  ]);
 
 function createEmptyRoom() {
   return {
@@ -39,31 +53,58 @@ function createInitialForm() {
       city: '',
       address: '',
     },
-    description: '',
-    photos: [''],
+
+    /*
+     * photos contains only already-uploaded/public URLs.
+     *
+     * Actual File objects selected from the computer are
+     * kept separately in selectedPhotoFiles.
+     */
+    photos: [],
+
     amenities: [],
+
     roomTypes: [
       createEmptyRoom(),
     ],
+
     status: 'active',
   };
 }
 
 function HotelFormPage() {
-  const { hotelId } = useParams();
-  const navigate = useNavigate();
+  const { hotelId } =
+    useParams();
 
-  const isEditMode = Boolean(hotelId);
+  const navigate =
+    useNavigate();
+
+  const isEditMode =
+    Boolean(hotelId);
 
   const [
     formData,
     setFormData,
-  ] = useState(createInitialForm);
+  ] = useState(
+    createInitialForm
+  );
+
+  /*
+   * Local image files selected by the vendor.
+   *
+   * These have not yet been uploaded to Supabase.
+   */
+  const [
+    selectedPhotoFiles,
+    setSelectedPhotoFiles,
+  ] = useState([]);
 
   const [
     isLoading,
     setIsLoading,
-  ] = useState(isEditMode);
+  ] = useState(
+    isEditMode
+  );
 
   const [
     isSubmitting,
@@ -71,9 +112,54 @@ function HotelFormPage() {
   ] = useState(false);
 
   const [
+    isUploadingPhotos,
+    setIsUploadingPhotos,
+  ] = useState(false);
+
+  const [
     formError,
     setFormError,
   ] = useState('');
+
+  /*
+   * Browser preview URLs for newly selected local files.
+   *
+   * URL.createObjectURL lets us show a local image before
+   * it has been uploaded to Supabase.
+   */
+  const localPhotoPreviews =
+    useMemo(
+      () =>
+        selectedPhotoFiles.map(
+          (file) => ({
+            file,
+
+            previewUrl:
+              URL.createObjectURL(
+                file
+              ),
+          })
+        ),
+      [selectedPhotoFiles]
+    );
+
+  /*
+   * Object URLs should be released when they are no
+   * longer needed so the browser does not keep their
+   * memory allocated.
+   */
+  useEffect(
+    () => () => {
+      localPhotoPreviews.forEach(
+        ({ previewUrl }) => {
+          URL.revokeObjectURL(
+            previewUrl
+          );
+        }
+      );
+    },
+    [localPhotoPreviews]
+  );
 
   useEffect(() => {
     if (!isEditMode) {
@@ -85,7 +171,9 @@ function HotelFormPage() {
     async function loadHotel() {
       try {
         const result =
-          await getVendorHotelById(hotelId);
+          await getVendorHotelById(
+            hotelId
+          );
 
         if (ignoreResult) {
           return;
@@ -106,58 +194,87 @@ function HotelFormPage() {
 
           location: {
             city:
-              hotel.location?.city ?? '',
+              hotel.location
+                ?.city ?? '',
+
             address:
-              hotel.location?.address ?? '',
+              hotel.location
+                ?.address ?? '',
           },
 
           description:
-            hotel.description ?? '',
+            hotel.description ??
+            '',
 
+          /*
+           * Existing Supabase URLs, or old manually
+           * entered URLs, continue working because
+           * MongoDB simply stores strings.
+           */
           photos:
-            hotel.photos?.length
-              ? hotel.photos
-              : [''],
+            hotel.photos ?? [],
 
           amenities:
-            hotel.amenities ?? [],
+            hotel.amenities ??
+            [],
 
           roomTypes:
-            hotel.roomTypes?.length
+            hotel.roomTypes
+              ?.length
               ? hotel.roomTypes.map(
                   (room) => ({
-                    _id: room._id,
+                    _id:
+                      room._id,
+
                     name:
-                      room.name ?? '',
+                      room.name ??
+                      '',
+
                     capacity:
                       String(
-                        room.capacity ?? ''
+                        room.capacity ??
+                          ''
                       ),
+
                     availableRooms:
                       String(
-                        room.availableRooms ?? ''
+                        room.availableRooms ??
+                          ''
                       ),
+
                     pricePerNight:
                       String(
-                        room.pricePerNight ?? ''
+                        room.pricePerNight ??
+                          ''
                       ),
                   })
                 )
-              : [createEmptyRoom()],
+              : [
+                  createEmptyRoom(),
+                ],
 
           status:
-            hotel.status ?? 'active',
+            hotel.status ??
+            'active',
         });
       } catch (error) {
-        if (!ignoreResult) {
+        if (
+          !ignoreResult
+        ) {
           setFormError(
-            error.response?.data?.message ||
+            error.response
+              ?.data
+              ?.message ||
               'Unable to load this hotel listing.'
           );
         }
       } finally {
-        if (!ignoreResult) {
-          setIsLoading(false);
+        if (
+          !ignoreResult
+        ) {
+          setIsLoading(
+            false
+          );
         }
       }
     }
@@ -172,7 +289,9 @@ function HotelFormPage() {
     isEditMode,
   ]);
 
-  function updateBasicField(event) {
+  function updateBasicField(
+    event
+  ) {
     const {
       name,
       value,
@@ -186,7 +305,9 @@ function HotelFormPage() {
     );
   }
 
-  function updateLocation(event) {
+  function updateLocation(
+    event
+  ) {
     const {
       name,
       value,
@@ -195,6 +316,7 @@ function HotelFormPage() {
     setFormData(
       (current) => ({
         ...current,
+
         location: {
           ...current.location,
           [name]: value,
@@ -203,49 +325,135 @@ function HotelFormPage() {
     );
   }
 
-  function updatePhoto(index, value) {
+  /*
+   * Handles files chosen from the vendor's computer.
+   *
+   * Frontend validation improves the user experience,
+   * but the backend still performs the real security
+   * validation.
+   */
+  function handlePhotoSelection(
+    event
+  ) {
+    const files =
+      Array.from(
+        event.target.files ||
+          []
+      );
+
+    /*
+     * Reset the input so selecting the same file again
+     * after removing it still triggers onChange.
+     */
+    event.target.value = '';
+
+    if (
+      files.length === 0
+    ) {
+      return;
+    }
+
+    const currentPhotoCount =
+      formData.photos.length +
+      selectedPhotoFiles.length;
+
+    if (
+      currentPhotoCount +
+        files.length >
+      MAX_PHOTOS
+    ) {
+      setFormError(
+        `A hotel can have a maximum of ${MAX_PHOTOS} photos.`
+      );
+
+      return;
+    }
+
+    for (const file of files) {
+      if (
+        !ALLOWED_IMAGE_TYPES.has(
+          file.type
+        )
+      ) {
+        setFormError(
+          'Only JPEG, PNG, and WebP images are allowed.'
+        );
+
+        return;
+      }
+
+      if (
+        file.size >
+        MAX_IMAGE_SIZE_BYTES
+      ) {
+        setFormError(
+          'Each image must be 5 MB or smaller.'
+        );
+
+        return;
+      }
+    }
+
+    setFormError('');
+
+    setSelectedPhotoFiles(
+      (current) => [
+        ...current,
+        ...files,
+      ]
+    );
+  }
+
+  /*
+   * Removes a picture that is already represented by
+   * a stored URL.
+   *
+   * At this stage we remove the URL from the hotel
+   * record only. We are not deleting the underlying
+   * Supabase file yet.
+   */
+  function removeExistingPhoto(
+    index
+  ) {
     setFormData(
       (current) => ({
         ...current,
+
         photos:
-          current.photos.map(
-            (photo, photoIndex) =>
-              photoIndex === index
-                ? value
-                : photo
+          current.photos.filter(
+            (
+              _,
+              photoIndex
+            ) =>
+              photoIndex !==
+              index
           ),
       })
     );
   }
 
-  function addPhoto() {
-    setFormData(
-      (current) => ({
-        ...current,
-        photos: [
-          ...current.photos,
-          '',
-        ],
-      })
+  /*
+   * Removes a local image before it has been uploaded.
+   */
+  function removeSelectedPhoto(
+    index
+  ) {
+    setSelectedPhotoFiles(
+      (current) =>
+        current.filter(
+          (
+            _,
+            photoIndex
+          ) =>
+            photoIndex !==
+            index
+        )
     );
   }
 
-  function removePhoto(index) {
-    setFormData(
-      (current) => ({
-        ...current,
-        photos:
-          current.photos.length === 1
-            ? ['']
-            : current.photos.filter(
-                (_, photoIndex) =>
-                  photoIndex !== index
-              ),
-      })
-    );
-  }
-
-  function toggleAmenity(amenity) {
+  function toggleAmenity(
+    amenity
+  ) {
     setFormData(
       (current) => {
         const selected =
@@ -256,15 +464,17 @@ function HotelFormPage() {
         return {
           ...current,
 
-          amenities: selected
-            ? current.amenities.filter(
-                (item) =>
-                  item !== amenity
-              )
-            : [
-                ...current.amenities,
-                amenity,
-              ],
+          amenities:
+            selected
+              ? current.amenities.filter(
+                  (item) =>
+                    item !==
+                    amenity
+                )
+              : [
+                  ...current.amenities,
+                  amenity,
+                ],
         };
       }
     );
@@ -281,11 +491,16 @@ function HotelFormPage() {
 
         roomTypes:
           current.roomTypes.map(
-            (room, roomIndex) =>
-              roomIndex === index
+            (
+              room,
+              roomIndex
+            ) =>
+              roomIndex ===
+              index
                 ? {
                     ...room,
-                    [field]: value,
+                    [field]:
+                      value,
                   }
                 : room
           ),
@@ -306,9 +521,12 @@ function HotelFormPage() {
     );
   }
 
-  function removeRoomType(index) {
+  function removeRoomType(
+    index
+  ) {
     if (
-      formData.roomTypes.length <= 1
+      formData.roomTypes
+        .length <= 1
     ) {
       return;
     }
@@ -319,15 +537,21 @@ function HotelFormPage() {
 
         roomTypes:
           current.roomTypes.filter(
-            (_, roomIndex) =>
-              roomIndex !== index
+            (
+              _,
+              roomIndex
+            ) =>
+              roomIndex !==
+              index
           ),
       })
     );
   }
 
   function validateForm() {
-    if (!formData.name.trim()) {
+    if (
+      !formData.name.trim()
+    ) {
       return 'Hotel name is required.';
     }
 
@@ -343,26 +567,43 @@ function HotelFormPage() {
       return 'Hotel address is required.';
     }
 
-    if (!formData.description.trim()) {
+    if (
+      !formData.description.trim()
+    ) {
       return 'Hotel description is required.';
+    }
+
+    if (
+      formData.photos.length +
+        selectedPhotoFiles.length >
+      MAX_PHOTOS
+    ) {
+      return `A hotel can have a maximum of ${MAX_PHOTOS} photos.`;
     }
 
     for (
       let index = 0;
-      index < formData.roomTypes.length;
+      index <
+      formData.roomTypes.length;
       index += 1
     ) {
       const room =
-        formData.roomTypes[index];
+        formData.roomTypes[
+          index
+        ];
 
-      if (!room.name.trim()) {
+      if (
+        !room.name.trim()
+      ) {
         return `Room type ${
           index + 1
         } needs a name.`;
       }
 
       if (
-        Number(room.capacity) < 1
+        Number(
+          room.capacity
+        ) < 1
       ) {
         return `Room type ${
           index + 1
@@ -370,7 +611,9 @@ function HotelFormPage() {
       }
 
       if (
-        Number(room.availableRooms) < 0
+        Number(
+          room.availableRooms
+        ) < 0
       ) {
         return `Room type ${
           index + 1
@@ -378,7 +621,9 @@ function HotelFormPage() {
       }
 
       if (
-        Number(room.pricePerNight) < 0
+        Number(
+          room.pricePerNight
+        ) < 0
       ) {
         return `Room type ${
           index + 1
@@ -389,78 +634,166 @@ function HotelFormPage() {
     return '';
   }
 
-  async function submitHotel(status) {
+  async function submitHotel(
+    status
+  ) {
     const validationError =
       validateForm();
 
-    if (validationError) {
+    if (
+      validationError
+    ) {
       setFormError(
         validationError
       );
+
       return;
     }
 
     setFormError('');
     setIsSubmitting(true);
 
-    const payload = {
-      name:
-        formData.name.trim(),
-
-      location: {
-        city:
-          formData.location.city.trim(),
-
-        address:
-          formData.location.address.trim(),
-      },
-
-      description:
-        formData.description.trim(),
-
-      photos:
-        formData.photos
-          .map((photo) =>
-            photo.trim()
-          )
-          .filter(Boolean),
-
-      amenities:
-        formData.amenities,
-
-      roomTypes:
-        formData.roomTypes.map(
-          (room) => ({
-            ...(room._id
-              ? {
-                  _id: room._id,
-                }
-              : {}),
-
-            name:
-              room.name.trim(),
-
-            capacity:
-              Number(
-                room.capacity
-              ),
-
-            availableRooms:
-              Number(
-                room.availableRooms
-              ),
-
-            pricePerNight:
-              Number(
-                room.pricePerNight
-              ),
-          })
-        ),
-
-      status,
-    };
-
     try {
+      /*
+       * Start with already-stored image URLs.
+       */
+      let photoUrls = [
+        ...formData.photos,
+      ];
+
+      /*
+       * Upload any newly selected local files before
+       * creating/updating the MongoDB hotel document.
+       */
+      if (
+        selectedPhotoFiles.length >
+        0
+      ) {
+        setIsUploadingPhotos(
+          true
+        );
+
+        const uploadResult =
+          await uploadHotelImages(
+            selectedPhotoFiles
+          );
+
+        const uploadedImages =
+          uploadResult?.data
+            ?.images ?? [];
+
+        const uploadedUrls =
+          uploadedImages
+            .map(
+              (image) =>
+                image.url
+            )
+            .filter(Boolean);
+
+        if (
+          uploadedUrls.length !==
+          selectedPhotoFiles.length
+        ) {
+          throw new Error(
+            'One or more hotel images could not be uploaded.'
+          );
+        }
+
+        /*
+         * Combine existing URLs with new Supabase URLs.
+         *
+         * Set removes accidental duplicate strings.
+         */
+        photoUrls =
+          Array.from(
+            new Set([
+              ...photoUrls,
+              ...uploadedUrls,
+            ])
+          );
+
+        /*
+         * Immediately remember successful uploads locally.
+         *
+         * If saving the hotel later fails for another reason,
+         * clicking Save again will not upload identical copies.
+         */
+        setFormData(
+          (current) => ({
+            ...current,
+            photos:
+              photoUrls,
+          })
+        );
+
+        setSelectedPhotoFiles(
+          []
+        );
+
+        setIsUploadingPhotos(
+          false
+        );
+      }
+
+      const payload = {
+        name:
+          formData.name.trim(),
+
+        location: {
+          city:
+            formData.location.city.trim(),
+
+          address:
+            formData.location.address.trim(),
+        },
+
+        description:
+          formData.description.trim(),
+
+        /*
+         * MongoDB continues storing only string URLs.
+         *
+         * The binary image itself lives in Supabase.
+         */
+        photos:
+          photoUrls,
+
+        amenities:
+          formData.amenities,
+
+        roomTypes:
+          formData.roomTypes.map(
+            (room) => ({
+              ...(room._id
+                ? {
+                    _id:
+                      room._id,
+                  }
+                : {}),
+
+              name:
+                room.name.trim(),
+
+              capacity:
+                Number(
+                  room.capacity
+                ),
+
+              availableRooms:
+                Number(
+                  room.availableRooms
+                ),
+
+              pricePerNight:
+                Number(
+                  room.pricePerNight
+                ),
+            })
+          ),
+
+        status,
+      };
+
       if (isEditMode) {
         await updateHotel(
           hotelId,
@@ -477,29 +810,46 @@ function HotelFormPage() {
       );
     } catch (error) {
       setFormError(
-        error.response?.data?.message ||
+        error.response?.data
+          ?.message ||
+          error.message ||
           'Unable to save the hotel listing.'
       );
     } finally {
-      setIsSubmitting(false);
+      setIsUploadingPhotos(
+        false
+      );
+
+      setIsSubmitting(
+        false
+      );
     }
   }
 
-  function handleSubmit(event) {
+  function handleSubmit(
+    event
+  ) {
     event.preventDefault();
 
-    void submitHotel('active');
+    void submitHotel(
+      'active'
+    );
   }
 
   if (isLoading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <p className="text-sm font-medium text-[#66756D]">
-          Loading hotel information...
+          Loading hotel
+          information...
         </p>
       </div>
     );
   }
+
+  const totalPhotoCount =
+    formData.photos.length +
+    selectedPhotoFiles.length;
 
   return (
     <div>
@@ -528,18 +878,19 @@ function HotelFormPage() {
       )}
 
       <form
-        onSubmit={handleSubmit}
+        onSubmit={
+          handleSubmit
+        }
         className="overflow-hidden rounded-xl border border-[#DCE5E0] bg-white shadow-sm"
       >
         <div className="grid lg:grid-cols-2">
-
           {/* LEFT SIDE */}
           <div className="border-b border-[#DCE5E0] p-5 lg:border-b-0 lg:border-r">
-
             {/* 1. BASIC INFORMATION */}
             <section>
               <h2 className="font-bold text-[#17211D]">
-                1. Basic Information
+                1. Basic
+                Information
               </h2>
 
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -573,7 +924,9 @@ function HotelFormPage() {
                     name="city"
                     required
                     value={
-                      formData.location.city
+                      formData
+                        .location
+                        .city
                     }
                     onChange={
                       updateLocation
@@ -594,7 +947,9 @@ function HotelFormPage() {
                   name="address"
                   required
                   value={
-                    formData.location.address
+                    formData
+                      .location
+                      .address
                   }
                   onChange={
                     updateLocation
@@ -606,7 +961,8 @@ function HotelFormPage() {
 
               <label className="mt-4 block">
                 <span className="text-sm font-medium text-[#44524B]">
-                  Short Description
+                  Short
+                  Description
                 </span>
 
                 <textarea
@@ -628,7 +984,8 @@ function HotelFormPage() {
             {/* 3. ROOM TYPES */}
             <section className="mt-7 border-t border-[#E5ECE8] pt-6">
               <h2 className="font-bold text-[#17211D]">
-                3. Room Type & Pricing
+                3. Room Type &
+                Pricing
               </h2>
 
               <div className="mt-4 overflow-x-auto rounded-lg border border-[#DCE5E0]">
@@ -644,11 +1001,13 @@ function HotelFormPage() {
                       </th>
 
                       <th className="px-3 py-2 text-left text-xs">
-                        Available Rooms
+                        Available
+                        Rooms
                       </th>
 
                       <th className="px-3 py-2 text-left text-xs">
-                        Price / Night
+                        Price /
+                        Night
                       </th>
 
                       <th className="px-3 py-2 text-center text-xs">
@@ -659,7 +1018,10 @@ function HotelFormPage() {
 
                   <tbody className="divide-y divide-[#E5ECE8]">
                     {formData.roomTypes.map(
-                      (room, index) => (
+                      (
+                        room,
+                        index
+                      ) => (
                         <tr
                           key={
                             room._id ||
@@ -680,7 +1042,9 @@ function HotelFormPage() {
                                 updateRoom(
                                   index,
                                   'name',
-                                  event.target.value
+                                  event
+                                    .target
+                                    .value
                                 )
                               }
                               className="w-full rounded border border-[#D4DED9] px-2 py-2 text-xs"
@@ -702,7 +1066,9 @@ function HotelFormPage() {
                                 updateRoom(
                                   index,
                                   'capacity',
-                                  event.target.value
+                                  event
+                                    .target
+                                    .value
                                 )
                               }
                               className="w-full rounded border border-[#D4DED9] px-2 py-2 text-xs"
@@ -724,7 +1090,9 @@ function HotelFormPage() {
                                 updateRoom(
                                   index,
                                   'availableRooms',
-                                  event.target.value
+                                  event
+                                    .target
+                                    .value
                                 )
                               }
                               className="w-full rounded border border-[#D4DED9] px-2 py-2 text-xs"
@@ -746,7 +1114,9 @@ function HotelFormPage() {
                                 updateRoom(
                                   index,
                                   'pricePerNight',
-                                  event.target.value
+                                  event
+                                    .target
+                                    .value
                                 )
                               }
                               className="w-full rounded border border-[#D4DED9] px-2 py-2 text-xs"
@@ -757,7 +1127,9 @@ function HotelFormPage() {
                             <button
                               type="button"
                               disabled={
-                                formData.roomTypes.length ===
+                                formData
+                                  .roomTypes
+                                  .length ===
                                 1
                               }
                               onClick={() =>
@@ -791,91 +1163,222 @@ function HotelFormPage() {
 
           {/* RIGHT SIDE */}
           <div className="p-5">
-
             {/* 2. PHOTOS */}
             <section>
-              <h2 className="font-bold text-[#17211D]">
-                2. Photos
-              </h2>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="font-bold text-[#17211D]">
+                    2. Hotel
+                    Photos
+                  </h2>
 
-              <p className="mt-1 text-xs text-[#66756D]">
-                Add public image URLs for your hotel.
-              </p>
+                  <p className="mt-1 text-xs leading-5 text-[#66756D]">
+                    Upload JPEG,
+                    PNG, or WebP
+                    images. Maximum
+                    5 MB per image.
+                  </p>
+                </div>
 
-              <div className="mt-4 space-y-3">
-                {formData.photos.map(
-                  (photo, index) => (
-                    <div
-                      key={index}
-                      className="flex gap-2"
-                    >
-                      <input
-                        type="url"
-                        value={photo}
-                        onChange={(
-                          event
-                        ) =>
-                          updatePhoto(
-                            index,
-                            event.target.value
-                          )
-                        }
-                        placeholder="https://example.com/hotel.jpg"
-                        className="min-w-0 flex-1 rounded-lg border border-[#CBD6D0] px-3 py-2.5 text-sm outline-none focus:border-[#0F6B4D]"
-                      />
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          removePhoto(
-                            index
-                          )
-                        }
-                        className="rounded-lg border border-red-200 px-3 text-sm font-semibold text-red-600 hover:bg-red-50"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  )
-                )}
+                <span className="rounded-full bg-[#EEF7F2] px-3 py-1 text-xs font-semibold text-[#0F6B4D]">
+                  {
+                    totalPhotoCount
+                  }
+                  /{MAX_PHOTOS}
+                </span>
               </div>
 
-              <button
-                type="button"
-                onClick={
-                  addPhoto
-                }
-                className="mt-3 text-sm font-semibold text-[#0F6B4D]"
+              <label
+                className={[
+                  'mt-4 flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition',
+                  totalPhotoCount >=
+                  MAX_PHOTOS
+                    ? 'cursor-not-allowed border-[#DCE5E0] bg-[#F7FAF8] opacity-60'
+                    : 'border-[#A9D9BB] bg-[#F7FAF8] hover:border-[#0F6B4D] hover:bg-[#EEF7F2]',
+                ].join(' ')}
               >
-                + Add another photo
-              </button>
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#DCEFE4] text-2xl text-[#0F6B4D]">
+                  +
+                </span>
 
-              {/* Photo previews */}
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                {formData.photos
-                  .filter(Boolean)
-                  .slice(0, 6)
-                  .map(
-                    (photo, index) => (
-                      <div
-                        key={`${photo}-${index}`}
-                        className="aspect-[4/3] overflow-hidden rounded-lg border border-[#DCE5E0] bg-[#EEF2F0]"
-                      >
-                        <img
-                          src={photo}
-                          alt="Hotel preview"
-                          className="h-full w-full object-cover"
-                          onError={(
-                            event
-                          ) => {
-                            event.currentTarget.style.display =
-                              'none';
-                          }}
-                        />
-                      </div>
-                    )
-                  )}
-              </div>
+                <span className="mt-3 text-sm font-semibold text-[#17211D]">
+                  Choose hotel
+                  images
+                </span>
+
+                <span className="mt-1 text-xs text-[#66756D]">
+                  Select one or
+                  multiple files
+                  from your device
+                </span>
+
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  disabled={
+                    totalPhotoCount >=
+                    MAX_PHOTOS
+                  }
+                  onChange={
+                    handlePhotoSelection
+                  }
+                  className="hidden"
+                />
+              </label>
+
+              {totalPhotoCount ===
+                0 && (
+                <div className="mt-4 rounded-lg border border-[#DCE5E0] bg-[#F7FAF8] px-4 py-3 text-xs text-[#66756D]">
+                  No hotel
+                  photos selected
+                  yet. Photos are
+                  optional, but
+                  adding them makes
+                  the listing easier
+                  for travelers to
+                  recognize.
+                </div>
+              )}
+
+              {/* Existing uploaded photos */}
+              {formData.photos
+                .length > 0 && (
+                <div className="mt-5">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#66756D]">
+                    Uploaded Photos
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {formData.photos.map(
+                      (
+                        photo,
+                        index
+                      ) => (
+                        <div
+                          key={`${photo}-${index}`}
+                          className="group relative aspect-[4/3] overflow-hidden rounded-xl border border-[#DCE5E0] bg-[#EEF2F0]"
+                        >
+                          <img
+                            src={
+                              photo
+                            }
+                            alt={`Hotel ${index + 1}`}
+                            className="h-full w-full object-cover"
+                            onError={(
+                              event
+                            ) => {
+                              event.currentTarget.style.display =
+                                'none';
+                            }}
+                          />
+
+                          {index ===
+                            0 && (
+                            <span className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold text-[#0F6B4D] shadow-sm">
+                              Cover
+                            </span>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeExistingPhoto(
+                                index
+                              )
+                            }
+                            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-sm font-bold text-red-600 shadow transition hover:bg-red-50"
+                            aria-label="Remove uploaded hotel photo"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Newly selected local photos */}
+              {localPhotoPreviews
+                .length > 0 && (
+                <div className="mt-5">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#66756D]">
+                    Ready to Upload
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {localPhotoPreviews.map(
+                      (
+                        {
+                          file,
+                          previewUrl,
+                        },
+                        index
+                      ) => (
+                        <div
+                          key={`${file.name}-${file.lastModified}-${index}`}
+                          className="relative overflow-hidden rounded-xl border border-[#A9D9BB] bg-[#EEF2F0]"
+                        >
+                          <div className="aspect-[4/3] overflow-hidden">
+                            <img
+                              src={
+                                previewUrl
+                              }
+                              alt={`Selected ${index + 1}`}
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+
+                          <div className="border-t border-[#DCE5E0] bg-white px-2 py-2">
+                            <p
+                              className="truncate text-[11px] font-medium text-[#44524B]"
+                              title={
+                                file.name
+                              }
+                            >
+                              {
+                                file.name
+                              }
+                            </p>
+
+                            <p className="mt-0.5 text-[10px] text-[#8A9690]">
+                              {(
+                                file.size /
+                                1024 /
+                                1024
+                              ).toFixed(
+                                2
+                              )}{' '}
+                              MB
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeSelectedPhoto(
+                                index
+                              )
+                            }
+                            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-sm font-bold text-red-600 shadow transition hover:bg-red-50"
+                            aria-label="Remove selected hotel photo"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {isUploadingPhotos && (
+                <div className="mt-4 rounded-lg border border-[#A9D9BB] bg-[#EEF7F2] px-4 py-3 text-sm font-medium text-[#0F6B4D]">
+                  Uploading hotel
+                  photos...
+                </div>
+              )}
             </section>
 
             {/* 4. AMENITIES */}
@@ -888,16 +1391,16 @@ function HotelFormPage() {
                 {AMENITY_OPTIONS.map(
                   (amenity) => (
                     <label
-                      key={amenity}
+                      key={
+                        amenity
+                      }
                       className="flex cursor-pointer items-center gap-2 text-sm text-[#0F6B4D]"
                     >
                       <input
                         type="checkbox"
-                        checked={
-                          formData.amenities.includes(
-                            amenity
-                          )
-                        }
+                        checked={formData.amenities.includes(
+                          amenity
+                        )}
                         onChange={() =>
                           toggleAmenity(
                             amenity
@@ -917,12 +1420,15 @@ function HotelFormPage() {
             <div className="mt-10 flex flex-wrap justify-end gap-3 border-t border-[#E5ECE8] pt-6">
               <button
                 type="button"
+                disabled={
+                  isSubmitting
+                }
                 onClick={() =>
                   navigate(
                     '/hotel/dashboard'
                   )
                 }
-                className="rounded-lg px-4 py-2.5 text-sm font-semibold text-[#0F6B4D] hover:bg-[#EEF7F2]"
+                className="rounded-lg px-4 py-2.5 text-sm font-semibold text-[#0F6B4D] hover:bg-[#EEF7F2] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -937,9 +1443,11 @@ function HotelFormPage() {
                     'inactive'
                   )
                 }
-                className="rounded-lg border border-[#79B993] bg-[#EEF7F2] px-5 py-2.5 text-sm font-semibold text-[#0F6B4D] hover:bg-[#DFF0E6] disabled:opacity-50"
+                className="rounded-lg border border-[#79B993] bg-[#EEF7F2] px-5 py-2.5 text-sm font-semibold text-[#0F6B4D] hover:bg-[#DFF0E6] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Save as Draft
+                {isUploadingPhotos
+                  ? 'Uploading...'
+                  : 'Save as Draft'}
               </button>
 
               <button
@@ -947,13 +1455,15 @@ function HotelFormPage() {
                 disabled={
                   isSubmitting
                 }
-                className="rounded-lg bg-[#0F6B4D] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#0A523B] disabled:opacity-50"
+                className="rounded-lg bg-[#0F6B4D] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#0A523B] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isSubmitting
-                  ? 'Saving...'
-                  : isEditMode
-                    ? 'Save Changes'
-                    : 'Publish Listing'}
+                {isUploadingPhotos
+                  ? 'Uploading Photos...'
+                  : isSubmitting
+                    ? 'Saving...'
+                    : isEditMode
+                      ? 'Save Changes'
+                      : 'Publish Listing'}
               </button>
             </div>
           </div>

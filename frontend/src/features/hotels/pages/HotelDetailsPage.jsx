@@ -108,17 +108,33 @@ function HotelDetailsPage() {
   ] = useState('');
 
   /*
-   * Instead of storing a simple success message,
-   * we keep some useful information about the
-   * successfully created booking.
-   *
-   * When this value is not null, the success
-   * modal is displayed.
+   * Stores the information shown inside the
+   * booking-success modal.
    */
   const [
     bookingSuccess,
     setBookingSuccess,
   ] = useState(null);
+
+  /*
+   * ---------------------------------------------------------
+   * HOTEL PHOTO GALLERY STATE
+   * ---------------------------------------------------------
+   *
+   * selectedPhotoIndex controls which hotel photo appears
+   * as the large image.
+   *
+   * isPhotoViewerOpen controls the full-screen lightbox.
+   */
+  const [
+    selectedPhotoIndex,
+    setSelectedPhotoIndex,
+  ] = useState(0);
+
+  const [
+    isPhotoViewerOpen,
+    setIsPhotoViewerOpen,
+  ] = useState(false);
 
   const [
     checkInDate,
@@ -176,6 +192,15 @@ function HotelDetailsPage() {
 
         setHotel(
           loadedHotel || null
+        );
+
+        /*
+         * Whenever another hotel is loaded,
+         * begin its gallery from the first photo.
+         */
+        setSelectedPhotoIndex(0);
+        setIsPhotoViewerOpen(
+          false
         );
 
         if (
@@ -242,6 +267,102 @@ function HotelDetailsPage() {
       selectedRoomTypeId,
     ]);
 
+  /*
+   * All hotel photos remain simple URL strings.
+   *
+   * They may be Supabase public URLs or older
+   * manually entered public URLs.
+   */
+  const hotelPhotos =
+    hotel?.photos ?? [];
+
+  const photoCount =
+    hotelPhotos.length;
+
+  const mainPhoto =
+    hotelPhotos[
+      selectedPhotoIndex
+    ] ||
+    hotelPhotos[0] ||
+    '';
+
+  /*
+   * Keyboard controls for the full-screen gallery.
+   *
+   * Escape     -> close
+   * ArrowLeft  -> previous photo
+   * ArrowRight -> next photo
+   */
+  useEffect(() => {
+    if (
+      !isPhotoViewerOpen
+    ) {
+      return undefined;
+    }
+
+    function handleKeyDown(
+      event
+    ) {
+      if (
+        event.key ===
+        'Escape'
+      ) {
+        setIsPhotoViewerOpen(
+          false
+        );
+
+        return;
+      }
+
+      if (
+        photoCount <= 1
+      ) {
+        return;
+      }
+
+      if (
+        event.key ===
+        'ArrowLeft'
+      ) {
+        setSelectedPhotoIndex(
+          (current) =>
+            (
+              current -
+              1 +
+              photoCount
+            ) %
+            photoCount
+        );
+      }
+
+      if (
+        event.key ===
+        'ArrowRight'
+      ) {
+        setSelectedPhotoIndex(
+          (current) =>
+            (current + 1) %
+            photoCount
+        );
+      }
+    }
+
+    window.addEventListener(
+      'keydown',
+      handleKeyDown
+    );
+
+    return () => {
+      window.removeEventListener(
+        'keydown',
+        handleKeyDown
+      );
+    };
+  }, [
+    isPhotoViewerOpen,
+    photoCount,
+  ]);
+
   const numberOfNights =
     calculateNights(
       checkInDate,
@@ -254,9 +375,43 @@ function HotelDetailsPage() {
       ? Number(
           selectedRoom.pricePerNight
         ) *
-        Number(numberOfRooms || 0) *
+        Number(
+          numberOfRooms || 0
+        ) *
         numberOfNights
       : 0;
+
+  function showPreviousPhoto() {
+    if (
+      photoCount <= 1
+    ) {
+      return;
+    }
+
+    setSelectedPhotoIndex(
+      (current) =>
+        (
+          current -
+          1 +
+          photoCount
+        ) %
+        photoCount
+    );
+  }
+
+  function showNextPhoto() {
+    if (
+      photoCount <= 1
+    ) {
+      return;
+    }
+
+    setSelectedPhotoIndex(
+      (current) =>
+        (current + 1) %
+        photoCount
+    );
+  }
 
   async function refreshAvailability() {
     const result =
@@ -303,12 +458,6 @@ function HotelDetailsPage() {
     event?.preventDefault();
 
     setPageError('');
-
-    /*
-     * If the traveler starts a new availability
-     * check, any old success popup should no
-     * longer be displayed.
-     */
     setBookingSuccess(null);
 
     if (
@@ -449,11 +598,17 @@ function HotelDetailsPage() {
       const result =
         await createBooking({
           hotelId,
+
           roomTypeId:
             selectedRoomTypeId,
+
           checkInDate,
+
           checkOutDate,
-          numberOfRooms: rooms,
+
+          numberOfRooms:
+            rooms,
+
           numberOfGuests:
             guests,
         });
@@ -462,30 +617,20 @@ function HotelDetailsPage() {
         result?.data?.booking;
 
       /*
-       * Refresh availability so the number of
-       * remaining rooms immediately reflects
-       * the booking that was just created.
+       * Refresh date-based room availability after
+       * creating the new booking.
        */
       await refreshAvailability();
 
-      /*
-       * Save a small booking summary.
-       *
-       * Setting this state causes the success
-       * modal near the bottom of the component
-       * to appear.
-       *
-       * We use fallbacks so the modal still works
-       * even if the API response does not include
-       * one of the snapshot names.
-       */
       setBookingSuccess({
         hotelName:
           booking?.hotelName ||
           hotel.name,
+
         roomTypeName:
           booking?.roomTypeName ||
           selectedRoom.name,
+
         totalPrice:
           booking?.totalPrice ??
           estimatedTotal,
@@ -505,7 +650,8 @@ function HotelDetailsPage() {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <p className="text-sm font-medium text-[#66756D]">
-          Loading hotel details...
+          Loading hotel
+          details...
         </p>
       </div>
     );
@@ -531,27 +677,108 @@ function HotelDetailsPage() {
     );
   }
 
-  const mainPhoto =
-    hotel.photos?.[0];
-
-  const extraPhotos =
-    hotel.photos?.slice(
-      1,
-      5
-    ) ?? [];
-
   return (
     <div>
       {/*
        * =====================================================
-       * BOOKING SUCCESS MODAL
+       * FULL-SCREEN HOTEL PHOTO VIEWER
        * =====================================================
        *
-       * This replaces the old small inline green alert.
+       * Clicking the main hotel photo opens this lightbox.
        *
-       * `fixed inset-0` makes the popup cover the screen.
-       * The semi-transparent dark background makes the
-       * confirmation stand out from the hotel page.
+       * Travelers can:
+       * - close with X
+       * - close by clicking the dark backdrop
+       * - close with Escape
+       * - use previous/next buttons
+       * - use keyboard arrow keys
+       */}
+      {isPhotoViewerOpen &&
+        mainPhoto && (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
+            role="presentation"
+            onClick={() =>
+              setIsPhotoViewerOpen(
+                false
+              )
+            }
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${hotel.name} photo gallery`}
+              className="relative flex h-full w-full max-w-6xl items-center justify-center"
+              onClick={(event) =>
+                event.stopPropagation()
+              }
+            >
+              {/* Close button */}
+              <button
+                type="button"
+                onClick={() =>
+                  setIsPhotoViewerOpen(
+                    false
+                  )
+                }
+                aria-label="Close photo viewer"
+                className="absolute right-0 top-0 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-2xl font-bold text-white transition hover:bg-white/25"
+              >
+                ×
+              </button>
+
+              {/* Previous photo */}
+              {photoCount > 1 && (
+                <button
+                  type="button"
+                  onClick={
+                    showPreviousPhoto
+                  }
+                  aria-label="Previous hotel photo"
+                  className="absolute left-0 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-4xl leading-none text-white transition hover:bg-white/25"
+                >
+                  ‹
+                </button>
+              )}
+
+              <img
+                src={mainPhoto}
+                alt={`${hotel.name} photo ${
+                  selectedPhotoIndex +
+                  1
+                } of ${photoCount}`}
+                className="max-h-[85vh] max-w-[90%] rounded-xl object-contain shadow-2xl"
+              />
+
+              {/* Next photo */}
+              {photoCount > 1 && (
+                <button
+                  type="button"
+                  onClick={
+                    showNextPhoto
+                  }
+                  aria-label="Next hotel photo"
+                  className="absolute right-0 z-10 flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-4xl leading-none text-white transition hover:bg-white/25"
+                >
+                  ›
+                </button>
+              )}
+
+              {photoCount > 1 && (
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-4 py-2 text-sm font-semibold text-white">
+                  {selectedPhotoIndex +
+                    1}{' '}
+                  / {photoCount}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+      {/*
+       * =====================================================
+       * BOOKING SUCCESS MODAL
+       * =====================================================
        */}
       {bookingSuccess && (
         <div
@@ -564,9 +791,6 @@ function HotelDetailsPage() {
             aria-labelledby="booking-success-title"
             className="w-full max-w-md rounded-2xl border border-[#DCE5E0] bg-white p-6 text-center shadow-2xl sm:p-8"
           >
-            {/*
-             * Large visual success indicator.
-             */}
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#DCEFE4] text-3xl font-bold text-[#0F6B4D]">
               ✓
             </div>
@@ -591,10 +815,6 @@ function HotelDetailsPage() {
               successfully.
             </p>
 
-            {/*
-             * Small booking summary so the traveler
-             * can immediately verify what they booked.
-             */}
             <div className="mt-5 rounded-xl bg-[#F7FAF8] p-4 text-left">
               <div className="flex items-center justify-between gap-4">
                 <span className="text-sm text-[#66756D]">
@@ -621,12 +841,6 @@ function HotelDetailsPage() {
               </div>
             </div>
 
-            {/*
-             * New hotel bookings begin as pending.
-             * We explicitly explain that here so
-             * "submitted" is not confused with
-             * "confirmed".
-             */}
             <div className="mt-5 rounded-xl border border-[#F0DDA8] bg-[#FFF9E8] px-4 py-4">
               <span className="inline-flex rounded-full bg-[#FFF0C2] px-3 py-1 text-xs font-bold text-[#8A6512]">
                 Pending
@@ -640,25 +854,18 @@ function HotelDetailsPage() {
               </p>
             </div>
 
-            {/*
-             * Primary action:
-             * Take the traveler directly to their
-             * booking history.
-             */}
             <button
               type="button"
               onClick={() =>
-                navigate('/bookings')
+                navigate(
+                  '/bookings'
+                )
               }
               className="mt-6 w-full rounded-lg bg-[#0F6B4D] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#0A523B]"
             >
               View My Bookings
             </button>
 
-            {/*
-             * Secondary action:
-             * Return to the hotel search page.
-             */}
             <button
               type="button"
               onClick={() =>
@@ -690,42 +897,132 @@ function HotelDetailsPage() {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0">
+          {/*
+           * =================================================
+           * INTERACTIVE HOTEL PHOTO GALLERY
+           * =================================================
+           */}
           <section className="overflow-hidden rounded-xl border border-[#DCE5E0] bg-white shadow-sm">
-            <div className="h-[360px] bg-[#EEF2F0]">
-              {mainPhoto ? (
+            {mainPhoto ? (
+              /*
+               * The main image is now a button.
+               *
+               * Clicking it opens the full-screen viewer.
+               */
+              <button
+                type="button"
+                onClick={() =>
+                  setIsPhotoViewerOpen(
+                    true
+                  )
+                }
+                className="group relative block h-[360px] w-full overflow-hidden bg-[#EEF2F0] text-left"
+                aria-label={`Open ${hotel.name} photo in full-screen viewer`}
+              >
                 <img
                   src={mainPhoto}
-                  alt={hotel.name}
-                  className="h-full w-full object-cover"
-                  onError={(event) => {
+                  alt={`${hotel.name} main hotel view`}
+                  className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.01]"
+                  onError={(
+                    event
+                  ) => {
                     event.currentTarget.style.display =
                       'none';
                   }}
                 />
-              ) : (
-                <div className="flex h-full items-center justify-center text-[#8A9690]">
-                  No hotel photo
-                </div>
-              )}
-            </div>
 
-            {extraPhotos.length >
-              0 && (
-              <div className="grid grid-cols-4 gap-2 p-3">
-                {extraPhotos.map(
-                  (photo) => (
-                    <div
-                      key={photo}
-                      className="h-20 overflow-hidden rounded-lg bg-[#EEF2F0]"
-                    >
-                      <img
-                        src={photo}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                  )
-                )}
+                {/*
+                 * Small hint so desktop users understand
+                 * that the image is interactive.
+                 */}
+                <span className="pointer-events-none absolute bottom-3 right-3 rounded-full bg-black/65 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition group-hover:bg-black/75">
+                  View full size
+                </span>
+              </button>
+            ) : (
+              <div className="flex h-[360px] items-center justify-center bg-[#EEF2F0] text-[#8A9690]">
+                No hotel photo
+              </div>
+            )}
+
+            {/*
+             * We now display all hotel photos as thumbnails,
+             * including the currently selected main photo.
+             *
+             * Clicking a thumbnail changes the main image.
+             */}
+            {photoCount > 1 && (
+              <div className="border-t border-[#E5ECE8] p-3">
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                  {hotelPhotos.map(
+                    (
+                      photo,
+                      index
+                    ) => {
+                      const isSelected =
+                        index ===
+                        selectedPhotoIndex;
+
+                      return (
+                        <button
+                          key={`${photo}-${index}`}
+                          type="button"
+                          onClick={() =>
+                            setSelectedPhotoIndex(
+                              index
+                            )
+                          }
+                          aria-label={`Show hotel photo ${
+                            index +
+                            1
+                          }`}
+                          aria-pressed={
+                            isSelected
+                          }
+                          className={[
+                            'relative h-20 overflow-hidden rounded-lg border-2 bg-[#EEF2F0] transition',
+                            isSelected
+                              ? 'border-[#0F6B4D] ring-2 ring-[#DCEFE4]'
+                              : 'border-transparent hover:border-[#A9D9BB]',
+                          ].join(
+                            ' '
+                          )}
+                        >
+                          <img
+                            src={
+                              photo
+                            }
+                            alt={`${hotel.name} thumbnail ${
+                              index +
+                              1
+                            }`}
+                            className="h-full w-full object-cover"
+                            onError={(
+                              event
+                            ) => {
+                              event.currentTarget.style.display =
+                                'none';
+                            }}
+                          />
+
+                          {isSelected && (
+                            <span className="absolute bottom-1 right-1 rounded-full bg-[#0F6B4D] px-2 py-0.5 text-[10px] font-bold text-white">
+                              Selected
+                            </span>
+                          )}
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+
+                <p className="mt-2 text-center text-xs text-[#66756D]">
+                  Select a photo to
+                  preview it, then
+                  click the large
+                  image to view full
+                  size.
+                </p>
               </div>
             )}
           </section>
@@ -765,7 +1062,9 @@ function HotelDetailsPage() {
                   {hotel.amenities.map(
                     (amenity) => (
                       <span
-                        key={amenity}
+                        key={
+                          amenity
+                        }
                         className="rounded-full bg-[#EEF7F2] px-3 py-1.5 text-xs font-medium text-[#0F6B4D]"
                       >
                         {amenity}
@@ -810,7 +1109,9 @@ function HotelDetailsPage() {
                         String(
                           selectedRoomTypeId
                         ) ===
-                        String(room._id)
+                        String(
+                          room._id
+                        )
                           ? 'border-[#0F6B4D] bg-[#EEF7F2]'
                           : 'border-[#DCE5E0] bg-white hover:border-[#A9D9BB]',
                       ].join(' ')}
@@ -899,10 +1200,15 @@ function HotelDetailsPage() {
 
               <input
                 type="date"
-                value={checkInDate}
-                onChange={(event) => {
+                value={
+                  checkInDate
+                }
+                onChange={(
+                  event
+                ) => {
                   setCheckInDate(
-                    event.target.value
+                    event.target
+                      .value
                   );
 
                   setAvailability(
@@ -924,10 +1230,15 @@ function HotelDetailsPage() {
 
               <input
                 type="date"
-                value={checkOutDate}
-                onChange={(event) => {
+                value={
+                  checkOutDate
+                }
+                onChange={(
+                  event
+                ) => {
                   setCheckOutDate(
-                    event.target.value
+                    event.target
+                      .value
                   );
 
                   setAvailability(
