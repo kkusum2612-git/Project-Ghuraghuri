@@ -18,6 +18,15 @@ import HotelFormPage from '../features/hotels/pages/HotelFormPage';
 import HotelSearchPage from '../features/hotels/pages/HotelSearchPage';
 import TravelerBookingsPage from '../features/hotels/pages/TravelerBookingsPage';
 
+/*
+ * Kusum Feature 3 - shared traveler payment history.
+ *
+ * Payment history is intentionally separate from the hotel
+ * feature because the same page can later display payments for
+ * guide bookings as well.
+ */
+import TravelerPaymentsPage from '../features/payments/pages/TravelerPaymentsPage';
+
 // ============================================================
 // RAFI - PUBLIC EVENT ROOMS
 // ============================================================
@@ -35,7 +44,6 @@ import TripWorkspace from '../features/trips/components/TripWorkspace';
 
 import TripDashboardPage from '../features/trips/pages/TripDashboardPage';
 import TripFormPage from '../features/trips/pages/TripFormPage';
-
 import TripTourPlanPage from '../features/trips/pages/TripTourPlanPage';
 
 import MainLayout from '../layouts/MainLayout';
@@ -52,8 +60,8 @@ function AppRoutes() {
         {/* MainLayout contains the global website structure,
             including shared navigation.
 
-            Public Rooms should live inside this same structure,
-            not inside a separate standalone application. */}
+            Public Rooms, Payments, Hotels and Trips all reuse
+            the same integrated application shell. */}
         <Route element={<MainLayout />}>
           <Route
             path="/"
@@ -84,12 +92,11 @@ function AppRoutes() {
 
             {/* --------------- TRAVELER --------------- */}
             <Route element={<TravelerRoute />}>
-              {/* TripWorkspace is the shared traveler sidebar
-                  and content area.
+              {/* TripWorkspace owns the shared traveler sidebar.
 
-                  Rafi's Event Rooms routes are intentionally
-                  placed HERE, beside Farhan's trips and
-                  Kusum's traveler hotel pages. */}
+                  Farhan's trip features, Kusum's hotel/payment
+                  features and Rafi's event rooms all reuse this
+                  same workspace. */}
               <Route element={<TripWorkspace />}>
                 {/* Farhan - Trip Management */}
                 <Route
@@ -135,10 +142,23 @@ function AppRoutes() {
                   }
                 />
 
+                {/* Kusum - Hotel Booking */}
                 <Route
                   path="/bookings"
                   element={
                     <TravelerBookingsPage />
+                  }
+                />
+
+                {/* Kusum Feature 3 - unified payment history.
+
+                    This page is intentionally not hotel-specific.
+                    Hotel payments appear here now and future
+                    guide payments can use the same page. */}
+                <Route
+                  path="/payments"
+                  element={
+                    <TravelerPaymentsPage />
                   }
                 />
 

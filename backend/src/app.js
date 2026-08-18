@@ -17,6 +17,17 @@ import bookingRouter from './routes/booking.routes.js';
 import healthRouter from './routes/health.routes.js';
 import hotelRouter from './routes/hotel.routes.js';
 
+/*
+ * Kusum Feature 3 - Payment Gateway.
+ *
+ * This router contains:
+ *
+ * - authenticated traveler payment APIs
+ * - SSLCOMMERZ sandbox callback APIs
+ * - traveler payment-history API
+ */
+import paymentRouter from './routes/payment.routes.js';
+
 // Rafi's Public Event Room router.
 //
 // We import it here because app.js is the central place
@@ -85,6 +96,10 @@ app.use(
 );
 
 // Parse URL-encoded form data when necessary.
+//
+// This is especially important for Kusum's SSLCOMMERZ
+// callbacks because the payment gateway sends callback
+// information as application/x-www-form-urlencoded data.
 app.use(
   express.urlencoded({
     extended: true,
@@ -111,6 +126,26 @@ app.use(
 app.use(
   '/api/v1/bookings',
   bookingRouter
+);
+
+/*
+ * Kusum Feature 3 - payment APIs.
+ *
+ * Examples:
+ *
+ * POST /api/v1/payments/hotel/:bookingId/initiate
+ * GET  /api/v1/payments/traveler/me
+ *
+ * SSLCOMMERZ callbacks:
+ *
+ * POST /api/v1/payments/sslcommerz/success
+ * POST /api/v1/payments/sslcommerz/fail
+ * POST /api/v1/payments/sslcommerz/cancel
+ * POST /api/v1/payments/sslcommerz/ipn
+ */
+app.use(
+  '/api/v1/payments',
+  paymentRouter
 );
 
 // Farhan's trip and itinerary APIs.

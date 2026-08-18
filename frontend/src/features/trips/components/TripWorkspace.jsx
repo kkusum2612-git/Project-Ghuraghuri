@@ -10,17 +10,27 @@ function TripWorkspace() {
   const { user } = useAuth();
   const location = useLocation();
 
-  // This is the ONE shared navigation menu used by the
-  // traveler workspace.
-  //
-  // Farhan originally added My Trips.
-  // Kusum's work added Hotels and Bookings.
-  //
-  // Rafi's Feature 1 now adds Event Rooms to this SAME menu.
-  //
-  // We deliberately do not create a separate Rafi sidebar,
-  // because Public Event Rooms are part of the same integrated
-  // traveler website.
+  /*
+   * This is the ONE shared navigation menu used by the
+   * traveler workspace.
+   *
+   * The menu currently combines:
+   *
+   * Farhan:
+   * - My Trips
+   *
+   * Kusum:
+   * - Hotels
+   * - Bookings
+   * - Payments
+   *
+   * Rafi:
+   * - Event Rooms
+   *
+   * Payments has its own navigation item because it now acts
+   * as a shared transaction-history area rather than being
+   * limited to hotel bookings.
+   */
   const menuItems = [
     {
       label: 'My Trips',
@@ -34,6 +44,10 @@ function TripWorkspace() {
       label: 'Bookings',
       to: '/bookings',
     },
+    {
+      label: 'Payments',
+      to: '/payments',
+    },
 
     // Rafi - Module 1, Feature 1:
     // Public Event Room Creation & Discovery.
@@ -43,22 +57,20 @@ function TripWorkspace() {
     },
   ];
 
-  // Decide which sidebar item should receive the active style.
-  //
-  // Example:
-  //
-  // /event-rooms
-  //
-  // activates Event Rooms.
-  //
-  // But this also makes:
-  //
-  // /event-rooms/new
-  // /event-rooms/123
-  //
-  // keep Event Rooms highlighted because both paths begin with:
-  //
-  // /event-rooms/
+  /*
+   * Decide which sidebar item receives the active style.
+   *
+   * Exact route:
+   *
+   * /payments
+   *
+   * activates Payments.
+   *
+   * The startsWith check also supports future nested routes,
+   * for example:
+   *
+   * /payments/123
+   */
   function isActive(item) {
     return (
       location.pathname === item.to ||
@@ -74,7 +86,7 @@ function TripWorkspace() {
         {/* Shared traveler sidebar.
 
             It remains hidden on smaller screens just like the
-            existing Farhan/Kusum implementation. */}
+            existing Farhan/Kusum/Rafi implementation. */}
         <aside className="hidden min-h-[calc(100vh-72px)] w-64 shrink-0 border-r border-[#E1E8E4] bg-white lg:block">
           <div className="border-b border-[#E1E8E4] px-5 py-5">
             <div className="flex items-center gap-3">
@@ -126,11 +138,11 @@ function TripWorkspace() {
           </nav>
         </aside>
 
-        {/* Outlet is where React Router displays whichever
-            traveler page matches the current URL.
+        {/* Outlet displays whichever traveler page matches
+            the current route.
 
-            This is why Event Rooms can reuse the same sidebar
-            without creating a new layout. */}
+            This lets Payments reuse exactly the same workspace
+            as Trips, Hotels, Bookings and Event Rooms. */}
         <main className="min-w-0 flex-1 px-5 py-7 lg:px-8">
           <Outlet />
         </main>
