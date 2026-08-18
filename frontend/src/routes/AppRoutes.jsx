@@ -33,9 +33,9 @@ import PublicRoomsPage from '../features/publicRooms/pages/PublicRoomsPage';
 import TravelerRoute from '../features/trips/components/TravelerRoute';
 import TripWorkspace from '../features/trips/components/TripWorkspace';
 
+import TripCollaboratorsPage from '../features/trips/pages/TripCollaboratorsPage';
 import TripDashboardPage from '../features/trips/pages/TripDashboardPage';
 import TripFormPage from '../features/trips/pages/TripFormPage';
-
 import TripTourPlanPage from '../features/trips/pages/TripTourPlanPage';
 
 import MainLayout from '../layouts/MainLayout';
@@ -110,6 +110,13 @@ function AppRoutes() {
                   path="/trips/:tripId/plan"
                   element={
                     <TripTourPlanPage />
+                  }
+                />
+
+                <Route
+                  path="/trips/:tripId/collaborators"
+                  element={
+                    <TripCollaboratorsPage />
                   }
                 />
 

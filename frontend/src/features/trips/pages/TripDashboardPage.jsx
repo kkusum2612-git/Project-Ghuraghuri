@@ -32,22 +32,6 @@ function TripDashboardPage() {
   const location =
     useLocation();
 
-  /*
-   * Create/Edit Trip redirects back to
-   * this page using React Router state.
-   *
-   * Example:
-   *
-   * navigate('/trips', {
-   *   state: {
-   *     successMessage:
-   *       'Trip created successfully.'
-   *   }
-   * });
-   *
-   * We read that message once when the
-   * dashboard is opened.
-   */
   const [
     successMessage,
     setSuccessMessage,
@@ -83,15 +67,6 @@ function TripDashboardPage() {
     setDeletingId,
   ] = useState(null);
 
-  /*
-   * Once a success message has been
-   * read from router state, remove that
-   * state from browser history.
-   *
-   * Without this, refreshing the My
-   * Trips page could show the old
-   * success toast again.
-   */
   useEffect(() => {
     if (
       !location.state
@@ -171,25 +146,35 @@ function TripDashboardPage() {
     );
   }
 
+  /*
+   * Shared trips can edit itinerary content, but only the
+   * owner can change the trip's main details or delete it.
+   */
   function handleEditTrip(
     trip
   ) {
+    if (
+      trip.accessType !==
+      'owner'
+    ) {
+      return;
+    }
+
     navigate(
       `/trips/${trip._id}/edit`
     );
   }
 
-  /*
-   * Clicking Delete does NOT call the
-   * backend immediately.
-   *
-   * It stores the trip first so the
-   * custom confirmation modal can be
-   * displayed.
-   */
   function handleDeleteRequest(
     trip
   ) {
+    if (
+      trip.accessType !==
+      'owner'
+    ) {
+      return;
+    }
+
     setTripToDelete(
       trip
     );
@@ -210,13 +195,6 @@ function TripDashboardPage() {
       return;
     }
 
-    /*
-     * Save the name before clearing the
-     * selected trip.
-     *
-     * We use it in the success toast
-     * after deletion completes.
-     */
     const deletedTripName =
       tripToDelete.tripName;
 
@@ -234,13 +212,6 @@ function TripDashboardPage() {
         deletedTripId
       );
 
-      /*
-       * Remove the deleted trip from
-       * local React state immediately.
-       *
-       * This avoids an unnecessary full
-       * page refresh.
-       */
       setTrips(
         (currentTrips) =>
           currentTrips.filter(

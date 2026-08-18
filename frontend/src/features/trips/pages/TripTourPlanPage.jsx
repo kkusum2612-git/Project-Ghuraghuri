@@ -23,6 +23,9 @@ import EditStopForm
 import TripMap
   from '../components/TripMap';
 
+import TripSectionNav
+  from '../components/TripSectionNav';
+
 import {
   deleteStop,
   getDayStops,
@@ -1041,6 +1044,12 @@ function TripTourPlanPage() {
             trip.endDate
           )}
         </p>
+      </div>
+
+      <div className="mt-5">
+        <TripSectionNav
+          tripId={tripId}
+        />
       </div>
 
       {pageError && (
