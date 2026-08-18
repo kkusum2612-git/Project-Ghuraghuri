@@ -5,6 +5,7 @@ import {
   getBookingById,
   getTravelerBookings,
   getVendorBookings,
+  updateVendorBookingStatus,
 } from '../controllers/booking.controller.js';
 
 import {
@@ -15,11 +16,26 @@ import {
 
 const router = Router();
 
+/*
+ * Shared protection used by hotel-vendor booking routes.
+ *
+ * The user must:
+ *
+ * 1. be logged in
+ * 2. have the hotel role
+ * 3. be approved by an administrator
+ */
 const hotelVendorProtection = [
   authenticateUser,
   authorizeRoles('hotel'),
   requireApprovedProvider,
 ];
+
+/*
+ * ------------------------------------------------------------
+ * TRAVELER ROUTES
+ * ------------------------------------------------------------
+ */
 
 // Only logged-in travelers can create bookings.
 router.post(
@@ -27,13 +43,6 @@ router.post(
   authenticateUser,
   authorizeRoles('traveler'),
   createBooking
-);
-
-// Logged-in hotel sees only bookings belonging to their hotels.
-router.get(
-  '/vendor/me',
-  ...hotelVendorProtection,
-  getVendorBookings
 );
 
 // Logged-in traveler sees only their own bookings.
@@ -44,7 +53,47 @@ router.get(
   getTravelerBookings
 );
 
-// Hotel or traveler can access a booking only if it belongs to them.
+/*
+ * ------------------------------------------------------------
+ * HOTEL VENDOR ROUTES
+ * ------------------------------------------------------------
+ */
+
+// Approved hotel vendor sees only bookings belonging to
+// their own hotels.
+router.get(
+  '/vendor/me',
+  ...hotelVendorProtection,
+  getVendorBookings
+);
+
+/*
+ * PATCH
+ * /api/v1/bookings/vendor/me/:bookingId/status
+ *
+ * Approved hotel vendor manages one booking belonging
+ * to their own hotel.
+ *
+ * Supported lifecycle:
+ *
+ * pending -> confirmed
+ * pending -> declined
+ * confirmed -> completed
+ */
+router.patch(
+  '/vendor/me/:bookingId/status',
+  ...hotelVendorProtection,
+  updateVendorBookingStatus
+);
+
+/*
+ * ------------------------------------------------------------
+ * SHARED SINGLE-BOOKING ROUTE
+ * ------------------------------------------------------------
+ *
+ * Hotel or traveler may access a booking only when it
+ * belongs to them.
+ */
 router.get(
   '/:bookingId',
   authenticateUser,
