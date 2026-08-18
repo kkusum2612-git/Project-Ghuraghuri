@@ -17,6 +17,17 @@ import bookingRouter from './routes/booking.routes.js';
 import healthRouter from './routes/health.routes.js';
 import hotelRouter from './routes/hotel.routes.js';
 
+/*
+ * Kusum Feature 3 - Payment Gateway.
+ *
+ * This router contains:
+ *
+ * - authenticated traveler payment APIs
+ * - SSLCOMMERZ sandbox callback APIs
+ * - traveler payment-history API
+ */
+import paymentRouter from './routes/payment.routes.js';
+
 // Rafi's Public Event Room router.
 //
 // We import it here because app.js is the central place
@@ -25,6 +36,12 @@ import hotelRouter from './routes/hotel.routes.js';
 import publicRoomRouter from './routes/publicRoom.routes.js';
 
 import tripRouter from './routes/trip.routes.js';
+
+// Shared image-upload API.
+//
+// Supabase stores the actual image files.
+// MongoDB will continue storing only the resulting URLs.
+import uploadRouter from './routes/upload.routes.js';
 
 const app = express();
 
@@ -68,15 +85,10 @@ if (
 
 // Parse JSON request bodies.
 //
-// Example:
+// Normal Ghuraghuri feature requests continue using JSON.
 //
-// {
-//   "roomName": "Cox's Bazar Trip Buddies"
-// }
-//
-// becomes available through:
-//
-// req.body
+// File uploads are multipart/form-data and are processed
+// separately by Multer on the upload route.
 app.use(
   express.json({
     limit: '1mb',
@@ -84,6 +96,10 @@ app.use(
 );
 
 // Parse URL-encoded form data when necessary.
+//
+// This is especially important for Kusum's SSLCOMMERZ
+// callbacks because the payment gateway sends callback
+// information as application/x-www-form-urlencoded data.
 app.use(
   express.urlencoded({
     extended: true,
@@ -112,6 +128,26 @@ app.use(
   bookingRouter
 );
 
+/*
+ * Kusum Feature 3 - payment APIs.
+ *
+ * Examples:
+ *
+ * POST /api/v1/payments/hotel/:bookingId/initiate
+ * GET  /api/v1/payments/traveler/me
+ *
+ * SSLCOMMERZ callbacks:
+ *
+ * POST /api/v1/payments/sslcommerz/success
+ * POST /api/v1/payments/sslcommerz/fail
+ * POST /api/v1/payments/sslcommerz/cancel
+ * POST /api/v1/payments/sslcommerz/ipn
+ */
+app.use(
+  '/api/v1/payments',
+  paymentRouter
+);
+
 // Farhan's trip and itinerary APIs.
 app.use(
   '/api/v1/trips',
@@ -123,20 +159,6 @@ app.use(
 // All routes inside publicRoomRouter are now available under:
 //
 // /api/v1/public-rooms
-//
-// For example:
-//
-// GET
-// /api/v1/public-rooms
-//
-// POST
-// /api/v1/public-rooms
-//
-// GET
-// /api/v1/public-rooms/mine
-//
-// POST
-// /api/v1/public-rooms/:roomId/join-requests
 app.use(
   '/api/v1/public-rooms',
   publicRoomRouter
@@ -152,6 +174,21 @@ app.use(
 app.use(
   '/api/v1/admin',
   adminRouter
+);
+
+// Shared image/file upload APIs.
+//
+// First implemented use:
+//
+// POST
+// /api/v1/uploads/hotel-images
+//
+// Other project members can later reuse the shared
+// Supabase storage service for their own feature-specific
+// upload routes.
+app.use(
+  '/api/v1/uploads',
+  uploadRouter
 );
 
 // If no route above matched the request,
