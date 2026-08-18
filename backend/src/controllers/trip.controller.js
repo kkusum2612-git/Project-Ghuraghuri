@@ -7,6 +7,71 @@ import Trip from '../models/trip.model.js';
 const ONE_DAY_IN_MILLISECONDS =
   24 * 60 * 60 * 1000;
 
+/*
+ * FEATURE 3 - TRIP MEMBER ACCESS
+ *
+ * A trip member is either:
+ * - the traveler who owns the trip, or
+ * - a traveler whose User ID is stored in collaborators[].
+ *
+ * We keep this query in one helper so every itinerary endpoint
+ * follows the same access rule.
+ */
+function buildTripMemberQuery(
+  tripId,
+  userId
+) {
+  return {
+    _id: tripId,
+    $or: [
+      {
+        owner: userId,
+      },
+      {
+        collaborators: userId,
+      },
+    ],
+  };
+}
+
+/*
+ * ObjectIds are objects, so comparing them directly with ===
+ * is not reliable. Converting both values to strings gives us
+ * a safe comparison.
+ */
+function isSameObjectId(
+  firstValue,
+  secondValue
+) {
+  if (
+    !firstValue ||
+    !secondValue
+  ) {
+    return false;
+  }
+
+  return (
+    firstValue.toString() ===
+    secondValue.toString()
+  );
+}
+
+/*
+ * The frontend will use accessType to decide whether a trip
+ * belongs to the current traveler or was shared with them.
+ */
+function getTripAccessType(
+  trip,
+  userId
+) {
+  return isSameObjectId(
+    trip.owner,
+    userId
+  )
+    ? 'owner'
+    : 'collaborator';
+}
+
 function normalizeDate(value) {
   const date = new Date(value);
 
@@ -516,7 +581,15 @@ async function getTrips(
 ) {
   try {
     const trips = await Trip.find({
-      owner: req.user._id,
+      $or: [
+        {
+          owner: req.user._id,
+        },
+        {
+          collaborators:
+            req.user._id,
+        },
+      ],
     }).lean();
 
     const tripsWithPlaceCount =
@@ -530,6 +603,11 @@ async function getTrips(
           return {
             ...trip,
             placeCount,
+            accessType:
+              getTripAccessType(
+                trip,
+                req.user._id
+              ),
           };
         })
       );
@@ -622,10 +700,12 @@ async function getTripById(
     }
 
     const trip =
-      await Trip.findOne({
-        _id: tripId,
-        owner: req.user._id,
-      }).lean();
+      await Trip.findOne(
+        buildTripMemberQuery(
+          tripId,
+          req.user._id
+        )
+      ).lean();
 
     if (!trip) {
       return res.status(404).json({
@@ -655,6 +735,11 @@ async function getTripById(
         ...trip,
         dayCount,
         placeCount,
+        accessType:
+          getTripAccessType(
+            trip,
+            req.user._id
+          ),
       },
     });
   } catch (error) {
@@ -685,10 +770,12 @@ async function getTripDays(
     }
 
     const trip =
-      await Trip.findOne({
-        _id: tripId,
-        owner: req.user._id,
-      }).lean();
+      await Trip.findOne(
+        buildTripMemberQuery(
+          tripId,
+          req.user._id
+        )
+      ).lean();
 
     if (!trip) {
       return res.status(404).json({
@@ -756,10 +843,12 @@ async function addStop(
     }
 
     const trip =
-      await Trip.findOne({
-        _id: tripId,
-        owner: req.user._id,
-      })
+      await Trip.findOne(
+        buildTripMemberQuery(
+          tripId,
+          req.user._id
+        )
+      )
         .select('_id')
         .lean();
 
@@ -999,10 +1088,12 @@ async function getDayStops(
     }
 
     const trip =
-      await Trip.findOne({
-        _id: tripId,
-        owner: req.user._id,
-      })
+      await Trip.findOne(
+        buildTripMemberQuery(
+          tripId,
+          req.user._id
+        )
+      )
         .select('_id')
         .lean();
 
@@ -1109,10 +1200,12 @@ async function updateStop(
     }
 
     const trip =
-      await Trip.findOne({
-        _id: tripId,
-        owner: req.user._id,
-      })
+      await Trip.findOne(
+        buildTripMemberQuery(
+          tripId,
+          req.user._id
+        )
+      )
         .select('_id')
         .lean();
 
@@ -1357,10 +1450,12 @@ async function deleteStop(
     }
 
     const trip =
-      await Trip.findOne({
-        _id: tripId,
-        owner: req.user._id,
-      })
+      await Trip.findOne(
+        buildTripMemberQuery(
+          tripId,
+          req.user._id
+        )
+      )
         .select('_id')
         .lean();
 
@@ -1515,10 +1610,12 @@ async function reorderStops(
     }
 
     const trip =
-      await Trip.findOne({
-        _id: tripId,
-        owner: req.user._id,
-      })
+      await Trip.findOne(
+        buildTripMemberQuery(
+          tripId,
+          req.user._id
+        )
+      )
         .select('_id')
         .lean();
 
@@ -1712,6 +1809,13 @@ async function updateTrip(
       });
     }
 
+    /*
+     * This deliberately stays OWNER-ONLY.
+     *
+     * A collaborator may edit itinerary stops, but they should
+     * not rename the whole trip, change its dates/destination,
+     * or trigger destructive removal of itinerary days.
+     */
     const trip =
       await Trip.findOne({
         _id: tripId,
@@ -1960,6 +2064,12 @@ async function deleteTrip(
       });
     }
 
+    /*
+     * Deleting the entire trip also stays OWNER-ONLY.
+     *
+     * Collaborators may work on the itinerary but must never be
+     * able to permanently destroy another traveler's trip.
+     */
     const trip =
       await Trip.findOne({
         _id: tripId,

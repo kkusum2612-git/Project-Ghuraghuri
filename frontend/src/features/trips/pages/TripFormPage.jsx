@@ -138,6 +138,21 @@ function TripFormPage() {
           );
         }
 
+        // Only the trip owner can open the basic-details edit form.
+        if (
+          trip.accessType !==
+          'owner'
+        ) {
+          navigate(
+            `/trips/${tripId}/plan`,
+            {
+              replace: true,
+            }
+          );
+
+          return;
+        }
+
         setFormData({
           tripName:
             trip.tripName ?? '',
@@ -182,6 +197,7 @@ function TripFormPage() {
     };
   }, [
     isEditMode,
+    navigate,
     tripId,
   ]);
 
