@@ -19,6 +19,10 @@ import {
   getHotelById,
 } from '../api/hotelApi';
 
+import {
+  getHotelReviews,
+} from '../api/hotelReviewApi';
+
 function formatMoney(value) {
   const amount = Number(value);
 
@@ -27,6 +31,31 @@ function formatMoney(value) {
   }
 
   return `৳${amount.toLocaleString()}`;
+}
+
+function formatReviewDate(value) {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat(
+    'en-GB',
+    {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    }
+  ).format(date);
 }
 
 function calculateNights(
@@ -67,6 +96,51 @@ function calculateNights(
   );
 }
 
+/*
+ * Displays a five-star visual.
+ *
+ * Individual stored reviews use whole-number ratings,
+ * while the hotel average may contain a decimal.
+ */
+function RatingStars({
+  rating,
+  sizeClass = 'text-base',
+}) {
+  const numericRating =
+    Number(rating) || 0;
+
+  const roundedRating =
+    Math.round(
+      numericRating
+    );
+
+  return (
+    <span
+      className={[
+        'inline-flex gap-0.5',
+        sizeClass,
+      ].join(' ')}
+      aria-label={`${numericRating} out of 5 stars`}
+    >
+      {[1, 2, 3, 4, 5].map(
+        (star) => (
+          <span
+            key={star}
+            className={
+              star <=
+              roundedRating
+                ? 'text-[#E7A622]'
+                : 'text-[#D5DDD9]'
+            }
+          >
+            ★
+          </span>
+        )
+      )}
+    </span>
+  );
+}
+
 function HotelDetailsPage() {
   const { hotelId } =
     useParams();
@@ -86,6 +160,34 @@ function HotelDetailsPage() {
     availability,
     setAvailability,
   ] = useState([]);
+
+  /*
+   * ---------------------------------------------------------
+   * HOTEL REVIEW STATE
+   * ---------------------------------------------------------
+   */
+  const [
+    reviews,
+    setReviews,
+  ] = useState([]);
+
+  const [
+    ratingSummary,
+    setRatingSummary,
+  ] = useState({
+    averageRating: 0,
+    reviewCount: 0,
+  });
+
+  const [
+    isLoadingReviews,
+    setIsLoadingReviews,
+  ] = useState(true);
+
+  const [
+    reviewError,
+    setReviewError,
+  ] = useState('');
 
   const [
     isLoading,
@@ -120,11 +222,6 @@ function HotelDetailsPage() {
    * ---------------------------------------------------------
    * HOTEL PHOTO GALLERY STATE
    * ---------------------------------------------------------
-   *
-   * selectedPhotoIndex controls which hotel photo appears
-   * as the large image.
-   *
-   * isPhotoViewerOpen controls the full-screen lightbox.
    */
   const [
     selectedPhotoIndex,
@@ -170,6 +267,11 @@ function HotelDetailsPage() {
     setSelectedRoomTypeId,
   ] = useState('');
 
+  /*
+   * ---------------------------------------------------------
+   * LOAD HOTEL
+   * ---------------------------------------------------------
+   */
   useEffect(() => {
     let ignoreResult = false;
 
@@ -195,21 +297,37 @@ function HotelDetailsPage() {
         );
 
         /*
-         * Whenever another hotel is loaded,
-         * begin its gallery from the first photo.
+         * The normal hotel API already contains its current
+         * aggregate review summary.
          */
+        setRatingSummary({
+          averageRating:
+            Number(
+              loadedHotel
+                ?.averageRating
+            ) || 0,
+
+          reviewCount:
+            Number(
+              loadedHotel
+                ?.reviewCount
+            ) || 0,
+        });
+
         setSelectedPhotoIndex(0);
+
         setIsPhotoViewerOpen(
           false
         );
 
         if (
           loadedHotel
-            ?.roomTypes?.length > 0
+            ?.roomTypes?.length >
+          0
         ) {
           setSelectedRoomTypeId(
-            loadedHotel.roomTypes[0]
-              ._id
+            loadedHotel
+              .roomTypes[0]._id
           );
         }
       } catch (error) {
@@ -228,6 +346,75 @@ function HotelDetailsPage() {
     }
 
     void loadHotel();
+
+    return () => {
+      ignoreResult = true;
+    };
+  }, [hotelId]);
+
+  /*
+   * ---------------------------------------------------------
+   * LOAD PUBLIC HOTEL REVIEWS
+   * ---------------------------------------------------------
+   *
+   * Review loading is kept separate from the hotel request.
+   *
+   * Therefore a temporary review API problem does not prevent
+   * the traveler from viewing or booking the hotel itself.
+   */
+  useEffect(() => {
+    let ignoreResult = false;
+
+    async function loadReviews() {
+      setIsLoadingReviews(true);
+      setReviewError('');
+
+      try {
+        const result =
+          await getHotelReviews(
+            hotelId
+          );
+
+        if (ignoreResult) {
+          return;
+        }
+
+        setReviews(
+          result?.data
+            ?.reviews ?? []
+        );
+
+        setRatingSummary({
+          averageRating:
+            Number(
+              result?.data
+                ?.averageRating
+            ) || 0,
+
+          reviewCount:
+            Number(
+              result?.data
+                ?.reviewCount
+            ) || 0,
+        });
+      } catch (error) {
+        if (!ignoreResult) {
+          setReviewError(
+            error.response?.data
+              ?.message ||
+              'Unable to load hotel reviews.'
+          );
+        }
+      } finally {
+        if (!ignoreResult) {
+          setIsLoadingReviews(
+            false
+          );
+        }
+      }
+    }
+
+    void loadReviews();
 
     return () => {
       ignoreResult = true;
@@ -255,7 +442,9 @@ function HotelDetailsPage() {
       return (
         hotel?.roomTypes?.find(
           (room) =>
-            String(room._id) ===
+            String(
+              room._id
+            ) ===
             String(
               selectedRoomTypeId
             )
@@ -267,12 +456,6 @@ function HotelDetailsPage() {
       selectedRoomTypeId,
     ]);
 
-  /*
-   * All hotel photos remain simple URL strings.
-   *
-   * They may be Supabase public URLs or older
-   * manually entered public URLs.
-   */
   const hotelPhotos =
     hotel?.photos ?? [];
 
@@ -288,10 +471,6 @@ function HotelDetailsPage() {
 
   /*
    * Keyboard controls for the full-screen gallery.
-   *
-   * Escape     -> close
-   * ArrowLeft  -> previous photo
-   * ArrowRight -> next photo
    */
   useEffect(() => {
     if (
@@ -422,8 +601,8 @@ function HotelDetailsPage() {
       );
 
     const roomTypes =
-      result?.data?.roomTypes ??
-      [];
+      result?.data
+        ?.roomTypes ?? [];
 
     setAvailability(
       roomTypes
@@ -445,7 +624,8 @@ function HotelDetailsPage() {
       roomTypes.length > 0
     ) {
       setSelectedRoomTypeId(
-        roomTypes[0].roomTypeId
+        roomTypes[0]
+          .roomTypeId
       );
     }
 
@@ -472,8 +652,12 @@ function HotelDetailsPage() {
     }
 
     if (
-      new Date(checkOutDate) <=
-      new Date(checkInDate)
+      new Date(
+        checkOutDate
+      ) <=
+      new Date(
+        checkInDate
+      )
     ) {
       setPageError(
         'Check-out date must be after the check-in date.'
@@ -537,13 +721,19 @@ function HotelDetailsPage() {
     }
 
     const rooms =
-      Number(numberOfRooms);
+      Number(
+        numberOfRooms
+      );
 
     const guests =
-      Number(numberOfGuests);
+      Number(
+        numberOfGuests
+      );
 
     if (
-      !Number.isInteger(rooms) ||
+      !Number.isInteger(
+        rooms
+      ) ||
       rooms < 1
     ) {
       setPageError(
@@ -554,7 +744,9 @@ function HotelDetailsPage() {
     }
 
     if (
-      !Number.isInteger(guests) ||
+      !Number.isInteger(
+        guests
+      ) ||
       guests < 1
     ) {
       setPageError(
@@ -567,7 +759,8 @@ function HotelDetailsPage() {
     if (
       rooms >
       Number(
-        selectedRoom.availableRooms
+        selectedRoom
+          .availableRooms
       )
     ) {
       setPageError(
@@ -583,7 +776,8 @@ function HotelDetailsPage() {
       ) * rooms;
 
     if (
-      guests > maximumGuests
+      guests >
+      maximumGuests
     ) {
       setPageError(
         `The selected room quantity can accommodate a maximum of ${maximumGuests} guests.`
@@ -614,25 +808,25 @@ function HotelDetailsPage() {
         });
 
       const booking =
-        result?.data?.booking;
+        result?.data
+          ?.booking;
 
-      /*
-       * Refresh date-based room availability after
-       * creating the new booking.
-       */
       await refreshAvailability();
 
       setBookingSuccess({
         hotelName:
-          booking?.hotelName ||
+          booking
+            ?.hotelName ||
           hotel.name,
 
         roomTypeName:
-          booking?.roomTypeName ||
+          booking
+            ?.roomTypeName ||
           selectedRoom.name,
 
         totalPrice:
-          booking?.totalPrice ??
+          booking
+            ?.totalPrice ??
           estimatedTotal,
       });
     } catch (error) {
@@ -667,7 +861,9 @@ function HotelDetailsPage() {
         <button
           type="button"
           onClick={() =>
-            navigate('/hotels')
+            navigate(
+              '/hotels'
+            )
           }
           className="mt-4 text-sm font-semibold text-[#0F6B4D]"
         >
@@ -679,20 +875,9 @@ function HotelDetailsPage() {
 
   return (
     <div>
-      {/*
-       * =====================================================
-       * FULL-SCREEN HOTEL PHOTO VIEWER
-       * =====================================================
-       *
-       * Clicking the main hotel photo opens this lightbox.
-       *
-       * Travelers can:
-       * - close with X
-       * - close by clicking the dark backdrop
-       * - close with Escape
-       * - use previous/next buttons
-       * - use keyboard arrow keys
-       */}
+      {/* =====================================================
+          FULL-SCREEN HOTEL PHOTO VIEWER
+         ===================================================== */}
       {isPhotoViewerOpen &&
         mainPhoto && (
           <div
@@ -709,11 +894,12 @@ function HotelDetailsPage() {
               aria-modal="true"
               aria-label={`${hotel.name} photo gallery`}
               className="relative flex h-full w-full max-w-6xl items-center justify-center"
-              onClick={(event) =>
+              onClick={(
+                event
+              ) =>
                 event.stopPropagation()
               }
             >
-              {/* Close button */}
               <button
                 type="button"
                 onClick={() =>
@@ -727,8 +913,8 @@ function HotelDetailsPage() {
                 ×
               </button>
 
-              {/* Previous photo */}
-              {photoCount > 1 && (
+              {photoCount >
+                1 && (
                 <button
                   type="button"
                   onClick={
@@ -750,8 +936,8 @@ function HotelDetailsPage() {
                 className="max-h-[85vh] max-w-[90%] rounded-xl object-contain shadow-2xl"
               />
 
-              {/* Next photo */}
-              {photoCount > 1 && (
+              {photoCount >
+                1 && (
                 <button
                   type="button"
                   onClick={
@@ -764,7 +950,8 @@ function HotelDetailsPage() {
                 </button>
               )}
 
-              {photoCount > 1 && (
+              {photoCount >
+                1 && (
                 <div className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-4 py-2 text-sm font-semibold text-white">
                   {selectedPhotoIndex +
                     1}{' '}
@@ -775,11 +962,9 @@ function HotelDetailsPage() {
           </div>
         )}
 
-      {/*
-       * =====================================================
-       * BOOKING SUCCESS MODAL
-       * =====================================================
-       */}
+      {/* =====================================================
+          BOOKING SUCCESS MODAL
+         ===================================================== */}
       {bookingSuccess && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6"
@@ -869,7 +1054,9 @@ function HotelDetailsPage() {
             <button
               type="button"
               onClick={() =>
-                navigate('/hotels')
+                navigate(
+                  '/hotels'
+                )
               }
               className="mt-3 w-full rounded-lg border border-[#D6DEDA] bg-white px-5 py-3 text-sm font-semibold text-[#44524B] transition hover:bg-[#F7FAF8]"
             >
@@ -882,7 +1069,9 @@ function HotelDetailsPage() {
       <button
         type="button"
         onClick={() =>
-          navigate('/hotels')
+          navigate(
+            '/hotels'
+          )
         }
         className="mb-4 text-sm font-semibold text-[#0F6B4D] hover:underline"
       >
@@ -897,18 +1086,9 @@ function HotelDetailsPage() {
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0">
-          {/*
-           * =================================================
-           * INTERACTIVE HOTEL PHOTO GALLERY
-           * =================================================
-           */}
+          {/* HOTEL PHOTO GALLERY */}
           <section className="overflow-hidden rounded-xl border border-[#DCE5E0] bg-white shadow-sm">
             {mainPhoto ? (
-              /*
-               * The main image is now a button.
-               *
-               * Clicking it opens the full-screen viewer.
-               */
               <button
                 type="button"
                 onClick={() =>
@@ -931,10 +1111,6 @@ function HotelDetailsPage() {
                   }}
                 />
 
-                {/*
-                 * Small hint so desktop users understand
-                 * that the image is interactive.
-                 */}
                 <span className="pointer-events-none absolute bottom-3 right-3 rounded-full bg-black/65 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition group-hover:bg-black/75">
                   View full size
                 </span>
@@ -945,13 +1121,8 @@ function HotelDetailsPage() {
               </div>
             )}
 
-            {/*
-             * We now display all hotel photos as thumbnails,
-             * including the currently selected main photo.
-             *
-             * Clicking a thumbnail changes the main image.
-             */}
-            {photoCount > 1 && (
+            {photoCount >
+              1 && (
               <div className="border-t border-[#E5ECE8] p-3">
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
                   {hotelPhotos.map(
@@ -981,6 +1152,7 @@ function HotelDetailsPage() {
                           }
                           className={[
                             'relative h-20 overflow-hidden rounded-lg border-2 bg-[#EEF2F0] transition',
+
                             isSelected
                               ? 'border-[#0F6B4D] ring-2 ring-[#DCEFE4]'
                               : 'border-transparent hover:border-[#A9D9BB]',
@@ -1027,12 +1199,51 @@ function HotelDetailsPage() {
             )}
           </section>
 
+          {/* HOTEL INFORMATION */}
           <section className="mt-5 rounded-xl border border-[#DCE5E0] bg-white p-6 shadow-sm">
             <h1 className="text-2xl font-bold text-[#17211D]">
               {hotel.name}
             </h1>
 
-            <p className="mt-2 text-sm text-[#66756D]">
+            {/* HOTEL RATING SUMMARY */}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {ratingSummary.reviewCount >
+              0 ? (
+                <>
+                  <RatingStars
+                    rating={
+                      ratingSummary.averageRating
+                    }
+                  />
+
+                  <span className="font-bold text-[#17211D]">
+                    {Number(
+                      ratingSummary.averageRating
+                    ).toFixed(
+                      1
+                    )}
+                  </span>
+
+                  <span className="text-sm text-[#66756D]">
+                    (
+                    {
+                      ratingSummary.reviewCount
+                    }{' '}
+                    {ratingSummary.reviewCount ===
+                    1
+                      ? 'review'
+                      : 'reviews'}
+                    )
+                  </span>
+                </>
+              ) : (
+                <span className="text-sm text-[#8A9690]">
+                  No reviews yet
+                </span>
+              )}
+            </div>
+
+            <p className="mt-3 text-sm text-[#66756D]">
               {
                 hotel.location
                   ?.address
@@ -1044,11 +1255,16 @@ function HotelDetailsPage() {
                 ? ', '
                 : ''}
 
-              {hotel.location?.city}
+              {
+                hotel.location
+                  ?.city
+              }
             </p>
 
             <p className="mt-5 text-sm leading-7 text-[#44524B]">
-              {hotel.description}
+              {
+                hotel.description
+              }
             </p>
 
             {hotel.amenities
@@ -1067,7 +1283,9 @@ function HotelDetailsPage() {
                         }
                         className="rounded-full bg-[#EEF7F2] px-3 py-1.5 text-xs font-medium text-[#0F6B4D]"
                       >
-                        {amenity}
+                        {
+                          amenity
+                        }
                       </span>
                     )
                   )}
@@ -1076,6 +1294,179 @@ function HotelDetailsPage() {
             )}
           </section>
 
+          {/* GUEST REVIEWS */}
+          <section className="mt-5 rounded-xl border border-[#DCE5E0] bg-white p-6 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-[#17211D]">
+                  Guest Reviews
+                </h2>
+
+                <p className="mt-1 text-sm text-[#66756D]">
+                  Reviews from
+                  travelers who
+                  completed a stay
+                  at this hotel.
+                </p>
+              </div>
+
+              {ratingSummary.reviewCount >
+                0 && (
+                <div className="rounded-xl bg-[#FFF8E8] px-4 py-3 sm:text-right">
+                  <div className="flex items-center gap-2 sm:justify-end">
+                    <span className="text-2xl font-bold text-[#17211D]">
+                      {Number(
+                        ratingSummary.averageRating
+                      ).toFixed(
+                        1
+                      )}
+                    </span>
+
+                    <span className="text-lg text-[#E7A622]">
+                      ★
+                    </span>
+                  </div>
+
+                  <p className="mt-0.5 text-xs text-[#8A7350]">
+                    {
+                      ratingSummary.reviewCount
+                    }{' '}
+                    {ratingSummary.reviewCount ===
+                    1
+                      ? 'review'
+                      : 'reviews'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {isLoadingReviews ? (
+              <div className="mt-6 rounded-xl bg-[#F7FAF8] px-4 py-8 text-center">
+                <p className="text-sm font-medium text-[#66756D]">
+                  Loading
+                  reviews...
+                </p>
+              </div>
+            ) : reviewError ? (
+              <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {reviewError}
+              </div>
+            ) : reviews.length ===
+              0 ? (
+              <div className="mt-6 rounded-xl bg-[#F7FAF8] px-6 py-10 text-center">
+                <div className="text-3xl text-[#D5DDD9]">
+                  ★
+                </div>
+
+                <p className="mt-3 font-semibold text-[#17211D]">
+                  No reviews yet
+                </p>
+
+                <p className="mt-1 text-sm text-[#66756D]">
+                  Completed guests
+                  will be able to
+                  share their
+                  experience here.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-6 divide-y divide-[#E5ECE8]">
+                {reviews.map(
+                  (review) => {
+                    const travelerName =
+                      review
+                        .travelerId
+                        ?.name ||
+                      'Traveler';
+
+                    const travelerPhoto =
+                      review
+                        .travelerId
+                        ?.profileImageUrl;
+
+                    return (
+                      <article
+                        key={
+                          review._id
+                        }
+                        className="py-5 first:pt-0 last:pb-0"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#DDF1E5] font-bold text-[#0F6B4D]">
+                            {travelerPhoto ? (
+                              <img
+                                src={
+                                  travelerPhoto
+                                }
+                                alt={
+                                  travelerName
+                                }
+                                className="h-full w-full object-cover"
+                                onError={(
+                                  event
+                                ) => {
+                                  event.currentTarget.style.display =
+                                    'none';
+                                }}
+                              />
+                            ) : (
+                              travelerName
+                                .charAt(
+                                  0
+                                )
+                                .toUpperCase()
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <p className="font-semibold text-[#17211D]">
+                                  {
+                                    travelerName
+                                  }
+                                </p>
+
+                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                  <RatingStars
+                                    rating={
+                                      review.rating
+                                    }
+                                    sizeClass="text-sm"
+                                  />
+
+                                  <span className="text-xs font-semibold text-[#44524B]">
+                                    {
+                                      review.rating
+                                    }
+                                    /5
+                                  </span>
+                                </div>
+                              </div>
+
+                              <p className="text-xs text-[#8A9690]">
+                                {formatReviewDate(
+                                  review.createdAt
+                                )}
+                              </p>
+                            </div>
+
+                            <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-[#44524B]">
+                              {
+                                review.comment
+                              }
+                            </p>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  }
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* ROOM TYPES */}
           <section className="mt-5 rounded-xl border border-[#DCE5E0] bg-white p-6 shadow-sm">
             <h2 className="text-lg font-bold text-[#17211D]">
               Room Types
@@ -1097,7 +1488,9 @@ function HotelDetailsPage() {
 
                   return (
                     <button
-                      key={room._id}
+                      key={
+                        room._id
+                      }
                       type="button"
                       onClick={() =>
                         setSelectedRoomTypeId(
@@ -1106,6 +1499,7 @@ function HotelDetailsPage() {
                       }
                       className={[
                         'w-full rounded-xl border p-4 text-left transition',
+
                         String(
                           selectedRoomTypeId
                         ) ===
@@ -1114,7 +1508,9 @@ function HotelDetailsPage() {
                         )
                           ? 'border-[#0F6B4D] bg-[#EEF7F2]'
                           : 'border-[#DCE5E0] bg-white hover:border-[#A9D9BB]',
-                      ].join(' ')}
+                      ].join(
+                        ' '
+                      )}
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
@@ -1139,8 +1535,10 @@ function HotelDetailsPage() {
                                 availableRoom.availableRooms
                               }{' '}
                               room(s)
-                              available for
-                              selected dates
+                              available
+                              for
+                              selected
+                              dates
                             </p>
                           )}
                         </div>
@@ -1165,6 +1563,7 @@ function HotelDetailsPage() {
           </section>
         </div>
 
+        {/* BOOKING PANEL */}
         <aside className="h-fit rounded-xl border border-[#DCE5E0] bg-white p-5 shadow-sm xl:sticky xl:top-24">
           <h2 className="text-lg font-bold text-[#17211D]">
             Select Room & Dates
@@ -1361,7 +1760,8 @@ function HotelDetailsPage() {
 
               {selectedRoom &&
               Number(
-                selectedRoom.availableRooms
+                selectedRoom
+                  .availableRooms
               ) === 0 ? (
                 <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-center text-sm font-semibold text-red-600">
                   Sold out for

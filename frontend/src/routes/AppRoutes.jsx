@@ -15,6 +15,7 @@ import HotelVendorWorkspace from '../features/hotels/components/HotelVendorWorks
 import HotelDashboardPage from '../features/hotels/pages/HotelDashboardPage';
 import HotelDetailsPage from '../features/hotels/pages/HotelDetailsPage';
 import HotelFormPage from '../features/hotels/pages/HotelFormPage';
+import HotelReviewsPage from '../features/hotels/pages/HotelReviewsPage';
 import HotelSearchPage from '../features/hotels/pages/HotelSearchPage';
 import TravelerBookingsPage from '../features/hotels/pages/TravelerBookingsPage';
 
@@ -30,11 +31,6 @@ import TravelerPaymentsPage from '../features/payments/pages/TravelerPaymentsPag
 // ============================================================
 // RAFI - PUBLIC EVENT ROOMS
 // ============================================================
-//
-// These pages belong to Rafi's Module 1 Feature 1.
-//
-// They are imported here because AppRoutes.jsx is the central
-// frontend route map for the entire Ghuraghuri application.
 import PublicRoomCreatePage from '../features/publicRooms/pages/PublicRoomCreatePage';
 import PublicRoomDetailsPage from '../features/publicRooms/pages/PublicRoomDetailsPage';
 import PublicRoomsPage from '../features/publicRooms/pages/PublicRoomsPage';
@@ -58,11 +54,6 @@ function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* MainLayout contains the global website structure,
-            including shared navigation.
-
-            Public Rooms, Payments, Hotels and Trips all reuse
-            the same integrated application shell. */}
         <Route element={<MainLayout />}>
           <Route
             path="/"
@@ -93,11 +84,6 @@ function AppRoutes() {
 
             {/* --------------- TRAVELER --------------- */}
             <Route element={<TravelerRoute />}>
-              {/* TripWorkspace owns the shared traveler sidebar.
-
-                  Farhan's trip features, Kusum's hotel/payment
-                  features and Rafi's event rooms all reuse this
-                  same workspace. */}
               <Route element={<TripWorkspace />}>
                 {/* Farhan - Trip Management */}
                 <Route
@@ -158,11 +144,7 @@ function AppRoutes() {
                   }
                 />
 
-                {/* Kusum Feature 3 - unified payment history.
-
-                    This page is intentionally not hotel-specific.
-                    Hotel payments appear here now and future
-                    guide payments can use the same page. */}
+                {/* Kusum - Payment History */}
                 <Route
                   path="/payments"
                   element={
@@ -170,18 +152,7 @@ function AppRoutes() {
                   }
                 />
 
-                {/* =====================================
-                    RAFI - PUBLIC EVENT ROOMS
-
-                    /event-rooms
-                    Main dashboard + discovery.
-
-                    /event-rooms/new
-                    Creation form.
-
-                    /event-rooms/:roomId
-                    Room details + Request to Join.
-                   ===================================== */}
+                {/* Rafi - Public Event Rooms */}
                 <Route
                   path="/event-rooms"
                   element={
@@ -232,12 +203,18 @@ function AppRoutes() {
                     <HotelFormPage />
                   }
                 />
+
+                {/* Kusum - Hotel Reviews & Ratings */}
+                <Route
+                  path="/hotel/reviews"
+                  element={
+                    <HotelReviewsPage />
+                  }
+                />
               </Route>
             </Route>
           </Route>
 
-          {/* Any unknown frontend URL reaches the existing
-              Not Found page. */}
           <Route
             path="*"
             element={

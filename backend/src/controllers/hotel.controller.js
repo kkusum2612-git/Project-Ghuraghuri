@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 import Booking from '../models/booking.model.js';
 import Hotel from '../models/hotel.model.js';
+import HotelReview from '../models/hotelReview.model.js';
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -11,14 +12,20 @@ function createHttpError(message, statusCode) {
 
 function validateObjectId(id, fieldName) {
   if (!mongoose.isValidObjectId(id)) {
-    throw createHttpError(`${fieldName} is invalid.`, 400);
+    throw createHttpError(
+      `${fieldName} is invalid.`,
+      400
+    );
   }
 }
 
 function parsePrice(value, fieldName) {
   const parsedValue = Number(value);
 
-  if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+  if (
+    !Number.isFinite(parsedValue) ||
+    parsedValue < 0
+  ) {
     throw createHttpError(
       `${fieldName} must be a non-negative number.`,
       400
@@ -26,6 +33,102 @@ function parsePrice(value, fieldName) {
   }
 
   return parsedValue;
+}
+
+/*
+ * ------------------------------------------------------------
+ * HOTEL RATING SUMMARY
+ * ------------------------------------------------------------
+ *
+ * Reviews are stored separately in HotelReview.
+ *
+ * Rather than saving duplicated average-rating values inside
+ * Hotel, we calculate the current average from actual reviews.
+ *
+ * This keeps the Review collection as the source of truth.
+ */
+async function getRatingSummariesForHotels(
+  hotelIds
+) {
+  if (
+    !Array.isArray(hotelIds) ||
+    hotelIds.length === 0
+  ) {
+    return new Map();
+  }
+
+  const summaries =
+    await HotelReview.aggregate([
+      {
+        $match: {
+          hotelId: {
+            $in: hotelIds,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: '$hotelId',
+
+          averageRating: {
+            $avg: '$rating',
+          },
+
+          reviewCount: {
+            $sum: 1,
+          },
+        },
+      },
+    ]);
+
+  const summaryMap =
+    new Map();
+
+  summaries.forEach(
+    (summary) => {
+      summaryMap.set(
+        String(summary._id),
+        {
+          averageRating:
+            Number(
+              summary.averageRating.toFixed(
+                1
+              )
+            ),
+
+          reviewCount:
+            summary.reviewCount,
+        }
+      );
+    }
+  );
+
+  return summaryMap;
+}
+
+/*
+ * Add averageRating and reviewCount to hotel responses
+ * without changing the Hotel database schema.
+ */
+function addRatingSummary(
+  hotel,
+  summaryMap
+) {
+  const hotelObject =
+    hotel.toObject();
+
+  const ratingSummary =
+    summaryMap.get(
+      String(hotel._id)
+    ) || {
+      averageRating: 0,
+      reviewCount: 0,
+    };
+
+  return {
+    ...hotelObject,
+    ...ratingSummary,
+  };
 }
 
 const HOTEL_MUTABLE_FIELDS = [
@@ -41,30 +144,46 @@ const HOTEL_MUTABLE_FIELDS = [
 function pickHotelFields(body) {
   const hotelData = {};
 
-  HOTEL_MUTABLE_FIELDS.forEach((field) => {
-    if (body[field] !== undefined) {
-      hotelData[field] = body[field];
+  HOTEL_MUTABLE_FIELDS.forEach(
+    (field) => {
+      if (
+        body[field] !==
+        undefined
+      ) {
+        hotelData[field] =
+          body[field];
+      }
     }
-  });
+  );
 
   return hotelData;
 }
 
-async function createHotel(req, res, next) {
+async function createHotel(
+  req,
+  res,
+  next
+) {
   try {
-    const hotelData = pickHotelFields(req.body);
+    const hotelData =
+      pickHotelFields(
+        req.body
+      );
 
-    const hotel = await Hotel.create({
-      ...hotelData,
+    const hotel =
+      await Hotel.create({
+        ...hotelData,
 
-      // Never trust a vendor ID supplied by the frontend.
-      // The authenticated hotel account becomes the owner.
-      vendorId: req.user._id,
-    });
+        // Never trust a vendor ID supplied by the frontend.
+        // The authenticated hotel account becomes the owner.
+        vendorId:
+          req.user._id,
+      });
 
     res.status(201).json({
       success: true,
-      message: 'Hotel listing created successfully.',
+      message:
+        'Hotel listing created successfully.',
       data: {
         hotel,
       },
@@ -74,7 +193,11 @@ async function createHotel(req, res, next) {
   }
 }
 
-async function getHotels(req, res, next) {
+async function getHotels(
+  req,
+  res,
+  next
+) {
   try {
     const {
       location,
@@ -91,14 +214,20 @@ async function getHotels(req, res, next) {
       filter.$or = [
         {
           'location.city': {
-            $regex: location,
-            $options: 'i',
+            $regex:
+              location,
+
+            $options:
+              'i',
           },
         },
         {
           'location.address': {
-            $regex: location,
-            $options: 'i',
+            $regex:
+              location,
+
+            $options:
+              'i',
           },
         },
       ];
@@ -108,33 +237,60 @@ async function getHotels(req, res, next) {
 
     if (roomType) {
       roomFilter.name = {
-        $regex: roomType,
-        $options: 'i',
+        $regex:
+          roomType,
+
+        $options:
+          'i',
       };
     }
 
-    if (minPrice !== undefined || maxPrice !== undefined) {
-      roomFilter.pricePerNight = {};
+    if (
+      minPrice !==
+        undefined ||
+      maxPrice !==
+        undefined
+    ) {
+      roomFilter.pricePerNight =
+        {};
 
-      if (minPrice !== undefined) {
-        roomFilter.pricePerNight.$gte = parsePrice(
-          minPrice,
-          'Minimum price'
-        );
-      }
-
-      if (maxPrice !== undefined) {
-        roomFilter.pricePerNight.$lte = parsePrice(
-          maxPrice,
-          'Maximum price'
-        );
+      if (
+        minPrice !==
+        undefined
+      ) {
+        roomFilter.pricePerNight.$gte =
+          parsePrice(
+            minPrice,
+            'Minimum price'
+          );
       }
 
       if (
-        roomFilter.pricePerNight.$gte !== undefined &&
-        roomFilter.pricePerNight.$lte !== undefined &&
-        roomFilter.pricePerNight.$gte >
-          roomFilter.pricePerNight.$lte
+        maxPrice !==
+        undefined
+      ) {
+        roomFilter.pricePerNight.$lte =
+          parsePrice(
+            maxPrice,
+            'Maximum price'
+          );
+      }
+
+      if (
+        roomFilter
+          .pricePerNight
+          .$gte !==
+          undefined &&
+        roomFilter
+          .pricePerNight
+          .$lte !==
+          undefined &&
+        roomFilter
+          .pricePerNight
+          .$gte >
+          roomFilter
+            .pricePerNight
+            .$lte
       ) {
         throw createHttpError(
           'Minimum price cannot be greater than maximum price.',
@@ -143,21 +299,88 @@ async function getHotels(req, res, next) {
       }
     }
 
-    if (Object.keys(roomFilter).length > 0) {
+    if (
+      Object.keys(
+        roomFilter
+      ).length > 0
+    ) {
       filter.roomTypes = {
-        $elemMatch: roomFilter,
+        $elemMatch:
+          roomFilter,
       };
     }
 
-    const hotels = await Hotel.find(filter).sort({
-      createdAt: -1,
-    });
+    const hotels =
+      await Hotel.find(
+        filter
+      ).sort({
+        createdAt: -1,
+      });
+
+    /*
+     * Fetch rating summaries for every hotel in one aggregate
+     * query instead of making one database query per hotel.
+     */
+    const ratingSummaryMap =
+      await getRatingSummariesForHotels(
+        hotels.map(
+          (hotel) =>
+            hotel._id
+        )
+      );
+
+    const hotelsWithRatings =
+      hotels.map(
+        (hotel) =>
+          addRatingSummary(
+            hotel,
+            ratingSummaryMap
+          )
+      );
 
     res.status(200).json({
       success: true,
-      message: 'Hotel listings retrieved successfully.',
+
+      message:
+        'Hotel listings retrieved successfully.',
+
       data: {
-        count: hotels.length,
+        count:
+          hotelsWithRatings.length,
+
+        hotels:
+          hotelsWithRatings,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getVendorHotels(
+  req,
+  res,
+  next
+) {
+  try {
+    const hotels =
+      await Hotel.find({
+        vendorId:
+          req.user._id,
+      }).sort({
+        createdAt: -1,
+      });
+
+    res.status(200).json({
+      success: true,
+
+      message:
+        'Vendor hotel listings retrieved successfully.',
+
+      data: {
+        count:
+          hotels.length,
+
         hotels,
       },
     });
@@ -166,45 +389,41 @@ async function getHotels(req, res, next) {
   }
 }
 
-async function getVendorHotels(req, res, next) {
+async function getVendorHotelById(
+  req,
+  res,
+  next
+) {
   try {
-    const hotels = await Hotel.find({
-      vendorId: req.user._id,
-    }).sort({
-      createdAt: -1,
-    });
+    const { hotelId } =
+      req.params;
 
-    res.status(200).json({
-      success: true,
-      message: 'Vendor hotel listings retrieved successfully.',
-      data: {
-        count: hotels.length,
-        hotels,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-}
+    validateObjectId(
+      hotelId,
+      'Hotel ID'
+    );
 
-async function getVendorHotelById(req, res, next) {
-  try {
-    const { hotelId } = req.params;
+    const hotel =
+      await Hotel.findOne({
+        _id: hotelId,
 
-    validateObjectId(hotelId, 'Hotel ID');
-
-    const hotel = await Hotel.findOne({
-      _id: hotelId,
-      vendorId: req.user._id,
-    });
+        vendorId:
+          req.user._id,
+      });
 
     if (!hotel) {
-      throw createHttpError('Hotel listing not found.', 404);
+      throw createHttpError(
+        'Hotel listing not found.',
+        404
+      );
     }
 
     res.status(200).json({
       success: true,
-      message: 'Vendor hotel listing retrieved successfully.',
+
+      message:
+        'Vendor hotel listing retrieved successfully.',
+
       data: {
         hotel,
       },
@@ -214,26 +433,55 @@ async function getVendorHotelById(req, res, next) {
   }
 }
 
-async function getHotelById(req, res, next) {
+async function getHotelById(
+  req,
+  res,
+  next
+) {
   try {
-    const { hotelId } = req.params;
+    const { hotelId } =
+      req.params;
 
-    validateObjectId(hotelId, 'Hotel ID');
+    validateObjectId(
+      hotelId,
+      'Hotel ID'
+    );
 
-    const hotel = await Hotel.findOne({
-      _id: hotelId,
-      status: 'active',
-    });
+    const hotel =
+      await Hotel.findOne({
+        _id: hotelId,
+
+        status:
+          'active',
+      });
 
     if (!hotel) {
-      throw createHttpError('Hotel listing not found.', 404);
+      throw createHttpError(
+        'Hotel listing not found.',
+        404
+      );
     }
+
+    const ratingSummaryMap =
+      await getRatingSummariesForHotels(
+        [hotel._id]
+      );
+
+    const hotelWithRating =
+      addRatingSummary(
+        hotel,
+        ratingSummaryMap
+      );
 
     res.status(200).json({
       success: true,
-      message: 'Hotel listing retrieved successfully.',
+
+      message:
+        'Hotel listing retrieved successfully.',
+
       data: {
-        hotel,
+        hotel:
+          hotelWithRating,
       },
     });
   } catch (error) {
@@ -247,7 +495,8 @@ async function getHotelAvailability(
   next
 ) {
   try {
-    const { hotelId } = req.params;
+    const { hotelId } =
+      req.params;
 
     const {
       checkInDate,
@@ -259,7 +508,10 @@ async function getHotelAvailability(
       'Hotel ID'
     );
 
-    if (!checkInDate || !checkOutDate) {
+    if (
+      !checkInDate ||
+      !checkOutDate
+    ) {
       throw createHttpError(
         'Check-in date and check-out date are required.',
         400
@@ -267,10 +519,14 @@ async function getHotelAvailability(
     }
 
     const parsedCheckInDate =
-      new Date(checkInDate);
+      new Date(
+        checkInDate
+      );
 
     const parsedCheckOutDate =
-      new Date(checkOutDate);
+      new Date(
+        checkOutDate
+      );
 
     if (
       Number.isNaN(
@@ -304,10 +560,13 @@ async function getHotelAvailability(
       );
     }
 
-    const hotel = await Hotel.findOne({
-      _id: hotelId,
-      status: 'active',
-    });
+    const hotel =
+      await Hotel.findOne({
+        _id: hotelId,
+
+        status:
+          'active',
+      });
 
     if (!hotel) {
       throw createHttpError(
@@ -318,7 +577,8 @@ async function getHotelAvailability(
 
     const overlappingBookings =
       await Booking.find({
-        hotelId: hotel._id,
+        hotelId:
+          hotel._id,
 
         bookingStatus: {
           $in: [
@@ -328,17 +588,20 @@ async function getHotelAvailability(
         },
 
         checkInDate: {
-          $lt: parsedCheckOutDate,
+          $lt:
+            parsedCheckOutDate,
         },
 
         checkOutDate: {
-          $gt: parsedCheckInDate,
+          $gt:
+            parsedCheckInDate,
         },
       }).select(
         'roomTypeId numberOfRooms'
       );
 
-    const reservedRoomsByType = {};
+    const reservedRoomsByType =
+      {};
 
     overlappingBookings.forEach(
       (booking) => {
@@ -352,7 +615,8 @@ async function getHotelAvailability(
             reservedRoomsByType[
               roomTypeId
             ] || 0
-          ) + booking.numberOfRooms;
+          ) +
+          booking.numberOfRooms;
       }
     );
 
@@ -394,8 +658,10 @@ async function getHotelAvailability(
 
     res.status(200).json({
       success: true,
+
       message:
         'Hotel room availability retrieved successfully.',
+
       data: {
         hotelId:
           hotel._id,
@@ -414,33 +680,56 @@ async function getHotelAvailability(
   }
 }
 
-async function updateHotel(req, res, next) {
+async function updateHotel(
+  req,
+  res,
+  next
+) {
   try {
-    const { hotelId } = req.params;
+    const { hotelId } =
+      req.params;
 
-    validateObjectId(hotelId, 'Hotel ID');
-
-    const updates = pickHotelFields(req.body);
-
-    const hotel = await Hotel.findOneAndUpdate(
-      {
-        _id: hotelId,
-        vendorId: req.user._id,
-      },
-      updates,
-      {
-        new: true,
-        runValidators: true,
-      }
+    validateObjectId(
+      hotelId,
+      'Hotel ID'
     );
 
+    const updates =
+      pickHotelFields(
+        req.body
+      );
+
+    const hotel =
+      await Hotel.findOneAndUpdate(
+        {
+          _id:
+            hotelId,
+
+          vendorId:
+            req.user._id,
+        },
+
+        updates,
+
+        {
+          new: true,
+          runValidators: true,
+        }
+      );
+
     if (!hotel) {
-      throw createHttpError('Hotel listing not found.', 404);
+      throw createHttpError(
+        'Hotel listing not found.',
+        404
+      );
     }
 
     res.status(200).json({
       success: true,
-      message: 'Hotel listing updated successfully.',
+
+      message:
+        'Hotel listing updated successfully.',
+
       data: {
         hotel,
       },
@@ -450,26 +739,45 @@ async function updateHotel(req, res, next) {
   }
 }
 
-async function deleteHotel(req, res, next) {
+async function deleteHotel(
+  req,
+  res,
+  next
+) {
   try {
-    const { hotelId } = req.params;
+    const { hotelId } =
+      req.params;
 
-    validateObjectId(hotelId, 'Hotel ID');
+    validateObjectId(
+      hotelId,
+      'Hotel ID'
+    );
 
-    const hotel = await Hotel.findOneAndDelete({
-      _id: hotelId,
-      vendorId: req.user._id,
-    });
+    const hotel =
+      await Hotel.findOneAndDelete({
+        _id:
+          hotelId,
+
+        vendorId:
+          req.user._id,
+      });
 
     if (!hotel) {
-      throw createHttpError('Hotel listing not found.', 404);
+      throw createHttpError(
+        'Hotel listing not found.',
+        404
+      );
     }
 
     res.status(200).json({
       success: true,
-      message: 'Hotel listing deleted successfully.',
+
+      message:
+        'Hotel listing deleted successfully.',
+
       data: {
-        deletedHotelId: hotel.id,
+        deletedHotelId:
+          hotel.id,
       },
     });
   } catch (error) {
