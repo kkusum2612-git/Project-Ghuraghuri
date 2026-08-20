@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
 } from 'react';
 
@@ -15,7 +16,18 @@ import {
   createTrip,
   getTripById,
   updateTrip,
+  uploadTripCover,
 } from '../api/tripApi';
+
+const MAX_COVER_SIZE =
+  5 * 1024 * 1024;
+
+const ALLOWED_COVER_TYPES =
+  new Set([
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  ]);
 
 function createInitialForm() {
   return {
@@ -50,12 +62,36 @@ function formatDateForInput(
     .slice(0, 10);
 }
 
+function validateCoverFile(
+  file
+) {
+  if (
+    !ALLOWED_COVER_TYPES.has(
+      file.type
+    )
+  ) {
+    return 'Only JPEG, PNG, and WebP images are allowed.';
+  }
+
+  if (
+    file.size >
+    MAX_COVER_SIZE
+  ) {
+    return 'The cover image must be 5 MB or smaller.';
+  }
+
+  return '';
+}
+
 function TripFormPage() {
   const { tripId } =
     useParams();
 
   const navigate =
     useNavigate();
+
+  const coverInputRef =
+    useRef(null);
 
   const isEditMode =
     Boolean(tripId);
@@ -83,6 +119,21 @@ function TripFormPage() {
     formError,
     setFormError,
   ] = useState('');
+
+  const [
+    coverFile,
+    setCoverFile,
+  ] = useState(null);
+
+  const [
+    coverPreview,
+    setCoverPreview,
+  ] = useState('');
+
+  const [
+    isDraggingCover,
+    setIsDraggingCover,
+  ] = useState(false);
 
   /*
    * This state stores information about
@@ -138,7 +189,7 @@ function TripFormPage() {
           );
         }
 
-        // Only the trip owner can open the basic-details edit form.
+        // Only the owner can edit the basic trip details.
         if (
           trip.accessType !==
           'owner'
@@ -152,6 +203,9 @@ function TripFormPage() {
 
           return;
         }
+
+        const existingCover =
+          trip.coverPhoto ?? '';
 
         setFormData({
           tripName:
@@ -172,8 +226,12 @@ function TripFormPage() {
             ),
 
           coverPhoto:
-            trip.coverPhoto ?? '',
+            existingCover,
         });
+
+        setCoverPreview(
+          existingCover
+        );
       } catch (error) {
         if (!ignoreResult) {
           setFormError(
@@ -201,6 +259,23 @@ function TripFormPage() {
     tripId,
   ]);
 
+  // Release temporary browser preview URLs when replaced or unmounted.
+  useEffect(() => {
+    return () => {
+      if (
+        coverPreview.startsWith(
+          'blob:'
+        )
+      ) {
+        URL.revokeObjectURL(
+          coverPreview
+        );
+      }
+    };
+  }, [
+    coverPreview,
+  ]);
+
   function updateField(
     event
   ) {
@@ -216,10 +291,151 @@ function TripFormPage() {
       })
     );
 
-    /*
-     * Clear an old form error when the
-     * traveler starts correcting input.
-     */
+    if (formError) {
+      setFormError('');
+    }
+  }
+
+  function selectCoverFile(
+    file
+  ) {
+    if (!file) {
+      return;
+    }
+
+    const fileError =
+      validateCoverFile(
+        file
+      );
+
+    if (fileError) {
+      setFormError(
+        fileError
+      );
+
+      return;
+    }
+
+    setCoverFile(
+      file
+    );
+
+    setCoverPreview(
+      URL.createObjectURL(
+        file
+      )
+    );
+
+    setFormError('');
+  }
+
+  function handleCoverInput(
+    event
+  ) {
+    const file =
+      event.target
+        .files?.[0];
+
+    selectCoverFile(
+      file
+    );
+
+    event.target.value = '';
+  }
+
+  function handleCoverDragOver(
+    event
+  ) {
+    event.preventDefault();
+
+    if (!isSubmitting) {
+      setIsDraggingCover(
+        true
+      );
+    }
+  }
+
+  function handleCoverDragLeave(
+    event
+  ) {
+    event.preventDefault();
+
+    if (
+      !event.currentTarget.contains(
+        event.relatedTarget
+      )
+    ) {
+      setIsDraggingCover(
+        false
+      );
+    }
+  }
+
+  function handleCoverDrop(
+    event
+  ) {
+    event.preventDefault();
+
+    setIsDraggingCover(
+      false
+    );
+
+    if (isSubmitting) {
+      return;
+    }
+
+    const files =
+      Array.from(
+        event.dataTransfer
+          .files || []
+      );
+
+    if (
+      files.length > 1
+    ) {
+      setFormError(
+        'You can select only one trip cover image.'
+      );
+
+      return;
+    }
+
+    selectCoverFile(
+      files[0]
+    );
+  }
+
+  function openCoverPicker() {
+    if (!isSubmitting) {
+      coverInputRef.current
+        ?.click();
+    }
+  }
+
+  function handleCoverKeyDown(
+    event
+  ) {
+    if (
+      event.key ===
+        'Enter' ||
+      event.key === ' '
+    ) {
+      event.preventDefault();
+      openCoverPicker();
+    }
+  }
+
+  function removeCoverPhoto() {
+    setCoverFile(null);
+    setCoverPreview('');
+
+    setFormData(
+      (current) => ({
+        ...current,
+        coverPhoto: '',
+      })
+    );
+
     if (formError) {
       setFormError('');
     }
@@ -267,13 +483,12 @@ function TripFormPage() {
   }
 
   /*
-   * Build one clean object for the API.
-   *
-   * Both normal updates and confirmed
-   * destructive updates reuse this same
-   * payload.
+   * Both normal updates and confirmed date updates
+   * reuse this payload.
    */
-  function createPayload() {
+  function createPayload(
+    coverPhoto
+  ) {
     return {
       tripName:
         formData.tripName.trim(),
@@ -291,15 +506,49 @@ function TripFormPage() {
         formData.endDate,
 
       coverPhoto:
-        formData.coverPhoto.trim(),
+        coverPhoto.trim(),
     };
   }
 
+  async function getCoverPhotoUrl() {
+    if (!coverFile) {
+      return formData
+        .coverPhoto;
+    }
+
+    const result =
+      await uploadTripCover(
+        coverFile
+      );
+
+    const uploadedUrl =
+      result?.data
+        ?.image?.url;
+
+    if (!uploadedUrl) {
+      throw new Error(
+        'The cover image uploaded, but its URL was not returned.'
+      );
+    }
+
+    setFormData(
+      (current) => ({
+        ...current,
+        coverPhoto:
+          uploadedUrl,
+      })
+    );
+
+    setCoverFile(null);
+
+    setCoverPreview(
+      uploadedUrl
+    );
+
+    return uploadedUrl;
+  }
+
   /*
-   * Navigate back to My Trips and pass
-   * the success message through React
-   * Router state.
-   *
    * TripDashboardPage reads this message
    * and displays SuccessToast.
    */
@@ -318,9 +567,8 @@ function TripFormPage() {
   }
 
   /*
-   * Convert the backend's HTTP 409 data
-   * into a structure that is convenient
-   * for our confirmation modal.
+   * Prepare the backend's HTTP 409 data
+   * for the confirmation modal.
    */
   function prepareDayRemovalConfirmation(
     confirmationData,
@@ -372,13 +620,18 @@ function TripFormPage() {
       return;
     }
 
-    const payload =
-      createPayload();
-
     setIsSubmitting(true);
     setFormError('');
 
     try {
+      const coverPhoto =
+        await getCoverPhotoUrl();
+
+      const payload =
+        createPayload(
+          coverPhoto
+        );
+
       if (isEditMode) {
         try {
           await updateTrip(
@@ -399,14 +652,6 @@ function TripFormPage() {
               ?.requiresConfirmation ===
               true;
 
-          /*
-           * A normal API failure should
-           * continue to the outer catch.
-           *
-           * Only the special 409 response
-           * opens the destructive-change
-           * confirmation modal.
-           */
           if (
             !requiresConfirmation
           ) {
@@ -439,6 +684,7 @@ function TripFormPage() {
       setFormError(
         error.response?.data
           ?.message ||
+          error.message ||
           `Unable to ${
             isEditMode
               ? 'update'
@@ -451,9 +697,8 @@ function TripFormPage() {
   }
 
   /*
-   * This runs only after the traveler
-   * confirms the destructive date
-   * shortening from our custom modal.
+   * This runs after the traveler confirms
+   * a destructive date shortening.
    */
   async function handleConfirmDayRemoval() {
     if (
@@ -476,11 +721,7 @@ function TripFormPage() {
         {
           ...payload,
 
-          /*
-           * This tells the backend that
-           * the traveler explicitly
-           * accepted the data removal.
-           */
+          // Confirms that removed days and stops may be deleted.
           confirmDayRemoval:
             true,
         }
@@ -694,7 +935,7 @@ function TripFormPage() {
                 htmlFor="coverPhoto"
                 className="mb-2 block text-sm font-semibold text-[#17211D]"
               >
-                Cover Photo URL
+                Cover Photo
 
                 <span className="ml-1 font-normal text-[#7B8982]">
                   (Optional)
@@ -702,37 +943,131 @@ function TripFormPage() {
               </label>
 
               <input
+                ref={
+                  coverInputRef
+                }
                 id="coverPhoto"
-                name="coverPhoto"
-                type="url"
-                value={
-                  formData.coverPhoto
-                }
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
                 onChange={
-                  updateField
+                  handleCoverInput
                 }
-                placeholder="https://example.com/trip-photo.jpg"
-                className="w-full rounded-lg border border-[#CAD7D0] bg-white px-4 py-3 text-sm text-[#17211D] outline-none transition placeholder:text-[#97A39D] focus:border-[#0F6B4D] focus:ring-2 focus:ring-[#DDF1E5]"
+                disabled={
+                  isSubmitting
+                }
+                className="hidden"
               />
 
-              <p className="mt-2 text-xs text-[#7B8982]">
-                You can leave this
-                empty and add a cover
-                photo later.
-              </p>
+              <div
+                role="button"
+                tabIndex={
+                  isSubmitting
+                    ? -1
+                    : 0
+                }
+                onClick={
+                  openCoverPicker
+                }
+                onKeyDown={
+                  handleCoverKeyDown
+                }
+                onDragEnter={
+                  handleCoverDragOver
+                }
+                onDragOver={
+                  handleCoverDragOver
+                }
+                onDragLeave={
+                  handleCoverDragLeave
+                }
+                onDrop={
+                  handleCoverDrop
+                }
+                className={`rounded-xl border-2 border-dashed px-6 py-8 text-center outline-none transition ${
+                  isDraggingCover
+                    ? 'border-[#0F6B4D] bg-[#EEF7F2]'
+                    : 'border-[#CAD7D0] bg-[#F8FAF9] hover:border-[#0F6B4D] hover:bg-[#F2F8F5]'
+                } ${
+                  isSubmitting
+                    ? 'cursor-not-allowed opacity-60'
+                    : 'cursor-pointer focus:border-[#0F6B4D] focus:ring-2 focus:ring-[#DDF1E5]'
+                }`}
+              >
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-[#DCEFE4] text-[#0F6B4D]">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    className="h-6 w-6"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M12 16V4M12 4L7.5 8.5M12 4L16.5 8.5M5 14V18C5 19.1 5.9 20 7 20H17C18.1 20 19 19.1 19 18V14"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+
+                <p className="mt-3 text-sm font-semibold text-[#17211D]">
+                  {isDraggingCover
+                    ? 'Drop the cover photo here'
+                    : coverPreview
+                      ? 'Drop or click to replace the cover'
+                      : 'Drag and drop a cover photo here'}
+                </p>
+
+                <p className="mt-1 text-xs text-[#66756D]">
+                  Or click to choose a file
+                </p>
+
+                <p className="mt-2 text-xs text-[#7B8982]">
+                  JPEG, PNG or WebP · Maximum 5 MB
+                </p>
+              </div>
             </div>
 
-            {formData.coverPhoto && (
+            {coverPreview && (
               <div>
-                <p className="mb-2 text-sm font-semibold text-[#17211D]">
-                  Cover Preview
-                </p>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-[#17211D]">
+                    Cover Preview
+                  </p>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={
+                        openCoverPicker
+                      }
+                      disabled={
+                        isSubmitting
+                      }
+                      className="rounded-lg border border-[#CAD7D0] bg-white px-3 py-1.5 text-xs font-semibold text-[#44524B] transition hover:bg-[#F3F6F4] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Replace
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={
+                        removeCoverPhoto
+                      }
+                      disabled={
+                        isSubmitting
+                      }
+                      className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
 
                 <div className="h-52 overflow-hidden rounded-xl border border-[#DCE5E0] bg-[#EEF2F0]">
                   <img
                     src={
-                      formData
-                        .coverPhoto
+                      coverPreview
                     }
                     alt="Trip cover preview"
                     className="h-full w-full object-cover"
@@ -764,9 +1099,11 @@ function TripFormPage() {
               className="rounded-lg bg-[#0F6B4D] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0A523B] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting
-                ? isEditMode
-                  ? 'Saving...'
-                  : 'Creating...'
+                ? coverFile
+                  ? 'Uploading...'
+                  : isEditMode
+                    ? 'Saving...'
+                    : 'Creating...'
                 : isEditMode
                   ? 'Save Changes'
                   : 'Create Trip'}
