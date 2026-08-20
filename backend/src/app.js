@@ -16,6 +16,7 @@ import authRouter from './routes/auth.routes.js';
 import bookingRouter from './routes/booking.routes.js';
 import healthRouter from './routes/health.routes.js';
 import hotelRouter from './routes/hotel.routes.js';
+import hotelReviewRouter from './routes/hotelReview.routes.js';
 
 /*
  * Kusum Feature 3 - Payment Gateway.
@@ -126,6 +127,21 @@ app.use(
 app.use(
   '/api/v1/bookings',
   bookingRouter
+);
+
+/*
+ * Kusum Hotel Reviews & Ratings APIs.
+ *
+ * Examples:
+ *
+ * POST /api/v1/reviews
+ * GET  /api/v1/reviews/hotel/:hotelId
+ * GET  /api/v1/reviews/traveler/me
+ * GET  /api/v1/reviews/vendor/me
+ */
+app.use(
+  '/api/v1/reviews',
+  hotelReviewRouter
 );
 
 /*
