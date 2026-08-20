@@ -86,6 +86,22 @@ const hotelImageUploader =
       imageFileFilter,
   });
 
+// Trip covers use one image while sharing the same validation rules.
+const tripCoverUploader =
+  multer({
+    storage,
+
+    limits: {
+      fileSize:
+        MAX_IMAGE_SIZE_BYTES,
+
+      files: 1,
+    },
+
+    fileFilter:
+      imageFileFilter,
+  });
+
 /**
  * Wrapper around Multer's array middleware.
  *
@@ -151,6 +167,60 @@ function uploadHotelImages(
   );
 }
 
+// The trip form sends one cover file using the "image" field.
+function uploadTripCover(
+  req,
+  res,
+  next
+) {
+  tripCoverUploader.single(
+    'image'
+  )(
+    req,
+    res,
+    (error) => {
+      if (!error) {
+        next();
+
+        return;
+      }
+
+      if (
+        error instanceof
+        multer.MulterError
+      ) {
+        if (
+          error.code ===
+          'LIMIT_FILE_SIZE'
+        ) {
+          error.message =
+            'The cover image must be 5 MB or smaller.';
+        } else if (
+          error.code ===
+            'LIMIT_FILE_COUNT' ||
+          error.code ===
+            'LIMIT_UNEXPECTED_FILE'
+        ) {
+          error.message =
+            'You can upload only one trip cover image.';
+        } else {
+          error.message =
+            `Image upload failed: ${error.message}`;
+        }
+
+        error.statusCode = 400;
+      }
+
+      if (!error.statusCode) {
+        error.statusCode = 400;
+      }
+
+      next(error);
+    }
+  );
+}
+
 export {
   uploadHotelImages,
+  uploadTripCover,
 };

@@ -113,6 +113,64 @@ async function uploadHotelImages(
   }
 }
 
+// Upload one traveler-selected trip cover to their Supabase folder.
+async function uploadTripCover(
+  req,
+  res,
+  next
+) {
+  try {
+    const file =
+      req.file;
+
+    if (!file) {
+      const error =
+        new Error(
+          'Please select a trip cover image to upload.'
+        );
+
+      error.statusCode = 400;
+
+      throw error;
+    }
+
+    const result =
+      await uploadImage({
+        buffer:
+          file.buffer,
+
+        mimeType:
+          file.mimetype,
+
+        folder:
+          `trips/${req.user._id}`,
+      });
+
+    res.status(201).json({
+      success: true,
+
+      message:
+        'Trip cover uploaded successfully.',
+
+      data: {
+        image: {
+          originalName:
+            file.originalname,
+
+          path:
+            result.path,
+
+          url:
+            result.publicUrl,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export {
   uploadHotelImages,
+  uploadTripCover,
 };

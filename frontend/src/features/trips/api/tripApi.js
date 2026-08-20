@@ -47,6 +47,33 @@ async function updateTrip(
   return response.data;
 }
 
+// Upload one cover file and return its Supabase URL.
+async function uploadTripCover(
+  file
+) {
+  const uploadData =
+    new FormData();
+
+  uploadData.append(
+    'image',
+    file
+  );
+
+  const response =
+    await apiClient.post(
+      '/uploads/trip-cover',
+      uploadData,
+      {
+        headers: {
+          'Content-Type':
+            'multipart/form-data',
+        },
+      }
+    );
+
+  return response.data;
+}
+
 async function deleteTrip(tripId) {
   const response =
     await apiClient.delete(
@@ -239,4 +266,5 @@ export {
   reorderStops,
   updateStop,
   updateTrip,
+  uploadTripCover,
 };

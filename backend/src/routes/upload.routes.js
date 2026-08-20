@@ -4,6 +4,7 @@ import {
 
 import {
   uploadHotelImages as uploadHotelImagesController,
+  uploadTripCover as uploadTripCoverController,
 } from '../controllers/upload.controller.js';
 
 import {
@@ -14,6 +15,7 @@ import {
 
 import {
   uploadHotelImages as uploadHotelImagesMiddleware,
+  uploadTripCover as uploadTripCoverMiddleware,
 } from '../middleware/image-upload.middleware.js';
 
 const router =
@@ -49,6 +51,21 @@ router.post(
   uploadHotelImagesMiddleware,
 
   uploadHotelImagesController
+);
+
+// An authenticated traveler can upload one trip cover image.
+router.post(
+  '/trip-cover',
+
+  authenticateUser,
+
+  authorizeRoles(
+    'traveler'
+  ),
+
+  uploadTripCoverMiddleware,
+
+  uploadTripCoverController
 );
 
 export default router;
