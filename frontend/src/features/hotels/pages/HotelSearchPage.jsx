@@ -26,7 +26,9 @@ function getStartingPrice(
 ) {
   const prices = roomTypes
     .map((roomType) =>
-      Number(roomType.pricePerNight)
+      Number(
+        roomType.pricePerNight
+      )
     )
     .filter(Number.isFinite);
 
@@ -37,8 +39,66 @@ function getStartingPrice(
   return Math.min(...prices);
 }
 
+/*
+ * ------------------------------------------------------------
+ * HOTEL RATING DISPLAY
+ * ------------------------------------------------------------
+ *
+ * The backend calculates:
+ *
+ * averageRating
+ * reviewCount
+ *
+ * from the HotelReview collection.
+ *
+ * Hotels without reviews return:
+ *
+ * averageRating = 0
+ * reviewCount = 0
+ */
+function HotelRating({
+  averageRating,
+  reviewCount,
+}) {
+  const rating =
+    Number(averageRating) || 0;
+
+  const count =
+    Number(reviewCount) || 0;
+
+  if (count === 0) {
+    return (
+      <p className="mt-2 text-xs text-[#8A9690]">
+        No reviews yet
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <span className="text-sm text-[#E7A622]">
+        ★
+      </span>
+
+      <span className="text-xs font-bold text-[#17211D]">
+        {rating.toFixed(1)}
+      </span>
+
+      <span className="text-xs text-[#66756D]">
+        (
+        {count}{' '}
+        {count === 1
+          ? 'review'
+          : 'reviews'}
+        )
+      </span>
+    </div>
+  );
+}
+
 function HotelSearchPage() {
-  const navigate = useNavigate();
+  const navigate =
+    useNavigate();
 
   const [
     hotels,
@@ -106,7 +166,8 @@ function HotelSearchPage() {
         }
 
         setHotels(
-          result?.data?.hotels ?? []
+          result?.data
+            ?.hotels ?? []
         );
       } catch (error) {
         if (!ignoreResult) {
@@ -140,8 +201,12 @@ function HotelSearchPage() {
     if (
       checkInDate &&
       checkOutDate &&
-      new Date(checkOutDate) <=
-        new Date(checkInDate)
+      new Date(
+        checkOutDate
+      ) <=
+        new Date(
+          checkInDate
+        )
     ) {
       setPageError(
         'Check-out date must be after the check-in date.'
@@ -189,10 +254,13 @@ function HotelSearchPage() {
       }
 
       const result =
-        await getHotels(filters);
+        await getHotels(
+          filters
+        );
 
       setHotels(
-        result?.data?.hotels ?? []
+        result?.data
+          ?.hotels ?? []
       );
     } catch (error) {
       setPageError(
@@ -221,10 +289,13 @@ function HotelSearchPage() {
       }
 
       const result =
-        await getHotels(filters);
+        await getHotels(
+          filters
+        );
 
       setHotels(
-        result?.data?.hotels ?? []
+        result?.data
+          ?.hotels ?? []
       );
     } catch (error) {
       setPageError(
@@ -267,9 +338,12 @@ function HotelSearchPage() {
             <input
               type="text"
               value={location}
-              onChange={(event) =>
+              onChange={(
+                event
+              ) =>
                 setLocation(
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
               placeholder="Cox's Bazar"
@@ -284,10 +358,15 @@ function HotelSearchPage() {
 
             <input
               type="date"
-              value={checkInDate}
-              onChange={(event) =>
+              value={
+                checkInDate
+              }
+              onChange={(
+                event
+              ) =>
                 setCheckInDate(
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
               className="w-full rounded-lg border border-[#D6DEDA] bg-white px-3 py-2.5 text-sm text-[#17211D] outline-none transition focus:border-[#0F6B4D]"
@@ -301,10 +380,15 @@ function HotelSearchPage() {
 
             <input
               type="date"
-              value={checkOutDate}
-              onChange={(event) =>
+              value={
+                checkOutDate
+              }
+              onChange={(
+                event
+              ) =>
                 setCheckOutDate(
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
               className="w-full rounded-lg border border-[#D6DEDA] bg-white px-3 py-2.5 text-sm text-[#17211D] outline-none transition focus:border-[#0F6B4D]"
@@ -320,9 +404,12 @@ function HotelSearchPage() {
               type="number"
               min="1"
               value={guests}
-              onChange={(event) =>
+              onChange={(
+                event
+              ) =>
                 setGuests(
-                  event.target.value
+                  event.target
+                    .value
                 )
               }
               className="w-full rounded-lg border border-[#D6DEDA] bg-white px-3 py-2.5 text-sm text-[#17211D] outline-none transition focus:border-[#0F6B4D]"
@@ -331,7 +418,9 @@ function HotelSearchPage() {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={
+              isLoading
+            }
             className="self-end rounded-lg bg-[#0F6B4D] px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0A523B] disabled:cursor-not-allowed disabled:opacity-60"
           >
             Search
@@ -372,10 +461,15 @@ function HotelSearchPage() {
               <input
                 type="number"
                 min="0"
-                value={minPrice}
-                onChange={(event) =>
+                value={
+                  minPrice
+                }
+                onChange={(
+                  event
+                ) =>
                   setMinPrice(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
                 placeholder="Minimum price"
@@ -385,10 +479,15 @@ function HotelSearchPage() {
               <input
                 type="number"
                 min="0"
-                value={maxPrice}
-                onChange={(event) =>
+                value={
+                  maxPrice
+                }
+                onChange={(
+                  event
+                ) =>
                   setMaxPrice(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
                 placeholder="Maximum price"
@@ -405,10 +504,15 @@ function HotelSearchPage() {
 
               <input
                 type="text"
-                value={roomType}
-                onChange={(event) =>
+                value={
+                  roomType
+                }
+                onChange={(
+                  event
+                ) =>
                   setRoomType(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
                 placeholder="e.g. Deluxe"
@@ -422,7 +526,9 @@ function HotelSearchPage() {
             onClick={() =>
               void handleSearch()
             }
-            disabled={isLoading}
+            disabled={
+              isLoading
+            }
             className="mt-5 w-full rounded-lg border border-[#0F6B4D] px-4 py-2.5 text-sm font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2] disabled:opacity-50"
           >
             Apply Filters
@@ -449,142 +555,178 @@ function HotelSearchPage() {
                 Loading hotels...
               </p>
             </div>
-          ) : hotels.length === 0 ? (
+          ) : hotels.length ===
+            0 ? (
             <div className="rounded-xl border border-[#DCE5E0] bg-white px-6 py-16 text-center shadow-sm">
               <p className="font-bold text-[#17211D]">
                 No hotels found
               </p>
 
               <p className="mt-2 text-sm text-[#66756D]">
-                Try changing your destination or filters.
+                Try changing your
+                destination or
+                filters.
               </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {hotels.map((hotel) => {
-                const photo =
-                  hotel.photos?.[0];
+              {hotels.map(
+                (hotel) => {
+                  const photo =
+                    hotel.photos?.[0];
 
-                const startingPrice =
-                  getStartingPrice(
-                    hotel.roomTypes
-                  );
+                  const startingPrice =
+                    getStartingPrice(
+                      hotel.roomTypes
+                    );
 
-                const primaryRoom =
-                  hotel.roomTypes?.[0];
+                  const primaryRoom =
+                    hotel
+                      .roomTypes?.[0];
 
-                return (
-                  <article
-                    key={hotel._id}
-                    className="overflow-hidden rounded-xl border border-[#DCE5E0] bg-white shadow-sm transition hover:border-[#B8D6C6] hover:shadow-md"
-                  >
-                    <div className="grid md:grid-cols-[190px_minmax(0,1fr)_145px]">
-                      <div className="h-48 bg-[#EEF2F0] md:h-full md:min-h-[190px]">
-                        {photo ? (
-                          <img
-                            src={photo}
-                            alt={hotel.name}
-                            className="h-full w-full object-cover"
-                            onError={(event) => {
-                              event.currentTarget.style.display =
-                                'none';
-                            }}
-                          />
-                        ) : (
-                          <div className="flex h-full min-h-40 items-center justify-center text-sm text-[#8A9690]">
-                            No hotel photo
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="p-4">
-                        <h2 className="text-base font-bold text-[#17211D]">
-                          {hotel.name}
-                        </h2>
-
-                        <p className="mt-1 text-xs font-medium text-[#66756D]">
-                          {hotel.location
-                            ?.address}
-
-                          {hotel.location
-                            ?.address &&
-                          hotel.location
-                            ?.city
-                            ? ', '
-                            : ''}
-
-                          {hotel.location
-                            ?.city}
-                        </p>
-
-                        {hotel.amenities
-                          ?.length > 0 && (
-                          <p className="mt-2 text-xs text-[#44524B]">
-                            {hotel.amenities
-                              .slice(0, 4)
-                              .join(
-                                '  |  '
-                              )}
-                          </p>
-                        )}
-
-                        <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#66756D]">
-                          {
-                            hotel.description
-                          }
-                        </p>
-
-                        {primaryRoom && (
-                          <div className="mt-3">
-                            <p className="text-xs font-semibold text-[#0F6B4D]">
-                              {
-                                primaryRoom.name
+                  return (
+                    <article
+                      key={
+                        hotel._id
+                      }
+                      className="overflow-hidden rounded-xl border border-[#DCE5E0] bg-white shadow-sm transition hover:border-[#B8D6C6] hover:shadow-md"
+                    >
+                      <div className="grid md:grid-cols-[190px_minmax(0,1fr)_145px]">
+                        <div className="h-48 bg-[#EEF2F0] md:h-full md:min-h-[190px]">
+                          {photo ? (
+                            <img
+                              src={
+                                photo
                               }
-                            </p>
-
-                            <p className="mt-0.5 text-xs text-[#66756D]">
-                              Up to{' '}
-                              {
-                                primaryRoom.capacity
-                              }{' '}
-                              guests
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col justify-between border-t border-[#E5ECE8] p-4 md:border-l md:border-t-0">
-                        <div className="md:text-right">
-                          <p className="text-lg font-bold text-[#17211D]">
-                            {startingPrice ===
-                            null
-                              ? '—'
-                              : formatMoney(
-                                  startingPrice
-                                )}
-                          </p>
-
-                          <p className="text-xs text-[#66756D]">
-                            / night
-                          </p>
+                              alt={
+                                hotel.name
+                              }
+                              className="h-full w-full object-cover"
+                              onError={(
+                                event
+                              ) => {
+                                event.currentTarget.style.display =
+                                  'none';
+                              }}
+                            />
+                          ) : (
+                            <div className="flex h-full min-h-40 items-center justify-center text-sm text-[#8A9690]">
+                              No hotel
+                              photo
+                            </div>
+                          )}
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleViewDetails(
-                              hotel
-                            )
-                          }
-                          className="mt-4 rounded-lg bg-[#0F6B4D] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0A523B]"
-                        >
-                          View Details
-                        </button>
+                        <div className="p-4">
+                          <h2 className="text-base font-bold text-[#17211D]">
+                            {
+                              hotel.name
+                            }
+                          </h2>
+
+                          {/* HOTEL RATING */}
+                          <HotelRating
+                            averageRating={
+                              hotel.averageRating
+                            }
+                            reviewCount={
+                              hotel.reviewCount
+                            }
+                          />
+
+                          <p className="mt-2 text-xs font-medium text-[#66756D]">
+                            {hotel
+                              .location
+                              ?.address}
+
+                            {hotel
+                              .location
+                              ?.address &&
+                            hotel
+                              .location
+                              ?.city
+                              ? ', '
+                              : ''}
+
+                            {hotel
+                              .location
+                              ?.city}
+                          </p>
+
+                          {hotel
+                            .amenities
+                            ?.length >
+                            0 && (
+                            <p className="mt-2 text-xs text-[#44524B]">
+                              {hotel.amenities
+                                .slice(
+                                  0,
+                                  4
+                                )
+                                .join(
+                                  '  |  '
+                                )}
+                            </p>
+                          )}
+
+                          <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#66756D]">
+                            {
+                              hotel.description
+                            }
+                          </p>
+
+                          {primaryRoom && (
+                            <div className="mt-3">
+                              <p className="text-xs font-semibold text-[#0F6B4D]">
+                                {
+                                  primaryRoom.name
+                                }
+                              </p>
+
+                              <p className="mt-0.5 text-xs text-[#66756D]">
+                                Up to{' '}
+                                {
+                                  primaryRoom.capacity
+                                }{' '}
+                                guests
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col justify-between border-t border-[#E5ECE8] p-4 md:border-l md:border-t-0">
+                          <div className="md:text-right">
+                            <p className="text-lg font-bold text-[#17211D]">
+                              {startingPrice ===
+                              null
+                                ? '—'
+                                : formatMoney(
+                                    startingPrice
+                                  )}
+                            </p>
+
+                            <p className="text-xs text-[#66756D]">
+                              / night
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleViewDetails(
+                                hotel
+                              )
+                            }
+                            className="mt-4 rounded-lg bg-[#0F6B4D] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0A523B]"
+                          >
+                            View Details
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                );
-              })}
+                    </article>
+                  );
+                }
+              )}
             </div>
           )}
         </section>

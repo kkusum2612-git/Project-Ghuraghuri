@@ -10,22 +10,30 @@ import useAuth from '../../auth/hooks/useAuth';
 
 function HotelVendorWorkspace() {
   const { user } = useAuth();
-  const location = useLocation();
+
+  const location =
+    useLocation();
 
   useEffect(() => {
     if (!location.hash) {
       return;
     }
 
-    const element = document.querySelector(location.hash);
+    const element =
+      document.querySelector(
+        location.hash
+      );
 
     if (element) {
-      window.setTimeout(() => {
-        element.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        });
-      }, 50);
+      window.setTimeout(
+        () => {
+          element.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          });
+        },
+        50
+      );
     }
   }, [location]);
 
@@ -46,29 +54,62 @@ function HotelVendorWorkspace() {
       label: 'Bookings',
       to: '/hotel/dashboard#bookings',
     },
+    {
+      label: 'Reviews',
+      to: '/hotel/reviews',
+    },
   ];
 
   function isActive(item) {
-    if (item.to === '/hotel/listings/new') {
-      return location.pathname === '/hotel/listings/new';
-    }
-
-    if (item.to.includes('#listings')) {
+    if (
+      item.to ===
+      '/hotel/listings/new'
+    ) {
       return (
-        location.pathname === '/hotel/dashboard' &&
-        location.hash === '#listings'
+        location.pathname ===
+        '/hotel/listings/new'
       );
     }
 
-    if (item.to.includes('#bookings')) {
+    if (
+      item.to ===
+      '/hotel/reviews'
+    ) {
       return (
-        location.pathname === '/hotel/dashboard' &&
-        location.hash === '#bookings'
+        location.pathname ===
+        '/hotel/reviews'
+      );
+    }
+
+    if (
+      item.to.includes(
+        '#listings'
+      )
+    ) {
+      return (
+        location.pathname ===
+          '/hotel/dashboard' &&
+        location.hash ===
+          '#listings'
+      );
+    }
+
+    if (
+      item.to.includes(
+        '#bookings'
+      )
+    ) {
+      return (
+        location.pathname ===
+          '/hotel/dashboard' &&
+        location.hash ===
+          '#bookings'
       );
     }
 
     return (
-      location.pathname === '/hotel/dashboard' &&
+      location.pathname ===
+        '/hotel/dashboard' &&
       !location.hash
     );
   }
@@ -82,12 +123,16 @@ function HotelVendorWorkspace() {
           <div className="border-b border-[#E5ECE8] px-5 py-6">
             <div className="flex items-center gap-3">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#DDF1E5] text-lg font-bold text-[#0F6B4D]">
-                {user?.name?.charAt(0)?.toUpperCase() || 'H'}
+                {user?.name
+                  ?.charAt(0)
+                  ?.toUpperCase() ||
+                  'H'}
               </div>
 
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-[#17211D]">
-                  {user?.name || 'Hotel Vendor'}
+                  {user?.name ||
+                    'Hotel Vendor'}
                 </p>
 
                 <p className="text-xs text-[#66756D]">
@@ -103,24 +148,32 @@ function HotelVendorWorkspace() {
 
           {/* Sidebar navigation */}
           <nav className="space-y-3 px-4 py-6">
-            {menuItems.map((item) => {
-              const active = isActive(item);
+            {menuItems.map(
+              (item) => {
+                const active =
+                  isActive(item);
 
-              return (
-                <Link
-                  key={item.label}
-                  to={item.to}
-                  className={[
-                    'block rounded-lg px-4 py-3 text-center text-sm transition',
-                    active
-                      ? 'bg-[#DCEFE4] font-semibold text-[#0F6B4D]'
-                      : 'bg-[#EEF7F2] text-[#17211D] hover:bg-[#DFF0E6]',
-                  ].join(' ')}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
+                return (
+                  <Link
+                    key={
+                      item.label
+                    }
+                    to={item.to}
+                    className={[
+                      'block rounded-lg px-4 py-3 text-center text-sm transition',
+
+                      active
+                        ? 'bg-[#DCEFE4] font-semibold text-[#0F6B4D]'
+                        : 'bg-[#EEF7F2] text-[#17211D] hover:bg-[#DFF0E6]',
+                    ].join(' ')}
+                  >
+                    {
+                      item.label
+                    }
+                  </Link>
+                );
+              }
+            )}
           </nav>
         </aside>
 
