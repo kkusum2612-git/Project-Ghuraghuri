@@ -909,13 +909,13 @@ function PremiumPage() {
 
               <p className="mt-2 text-3xl font-bold text-[#17211D]">
                 {Number(
-                  membership?.rewardPoints ||
-                    0
+                    rewards?.availableRewardPoints ||
+                        0
                 ).toLocaleString()}
               </p>
 
               <p className="mt-1 text-xs text-[#66756D]">
-                Currently available
+                Available for a new booking
               </p>
             </div>
 

@@ -1,158 +1,102 @@
 import mongoose from 'mongoose';
 
+
 /*
- * ------------------------------------------------------------
+ * ============================================================
  * RAFI FEATURE 3 - PREMIUM MEMBERSHIP MODEL
- * ------------------------------------------------------------
+ * ============================================================
  *
- * This model answers an important question:
+ * A PremiumMembership document exists only after a traveler has
+ * successfully upgraded to Premium.
  *
- *   "Is this traveler currently a Premium user?"
  *
- * We intentionally keep Premium membership separate from the
- * shared User model.
+ * No document:
  *
- * Why?
+ *   normal traveler
  *
- * User.js is shared authentication infrastructure used by all
- * project members.
  *
- * Rafi's Premium feature does not need to rewrite that shared
- * model merely to add:
+ * Document exists:
  *
- *   isPremium
- *   rewardPoints
+ *   Premium traveler
  *
- * Instead, a PremiumMembership document exists only for a
- * traveler who has successfully upgraded.
  *
- * Therefore:
- *
- * No PremiumMembership document
- *   -> normal traveler
- *
- * PremiumMembership document exists
- *   -> Premium traveler
- *
- * Later:
- *
- *   GET /api/v1/premium/me
- *
- * checks this collection and tells the frontend whether the
- * sidebar should display:
- *
- *   "Upgrade Account"
- *
- * or:
- *
- *   "Premium User"
+ * We intentionally keep this information outside User.js so
+ * Rafi's feature does not unnecessarily modify the project's
+ * shared authentication model.
  */
 
 
-/*
- * Create the schema for one traveler's Premium membership.
- */
 const premiumMembershipSchema =
   new mongoose.Schema(
     {
       /*
-       * travelerId
+       * ------------------------------------------------------
+       * TRAVELER
        * ------------------------------------------------------
        *
-       * This identifies the traveler who owns the membership.
-       *
-       * unique: true is extremely important.
-       *
-       * It means one traveler cannot accidentally receive two
-       * different PremiumMembership documents.
-       *
-       * Conceptually:
-       *
-       * Traveler Rafi
-       *   -> one Premium membership
-       *
-       * NOT:
-       *
-       * Traveler Rafi
-       *   -> membership 1
-       *   -> membership 2
-       *   -> membership 3
+       * Every Premium traveler may have exactly one membership.
        */
       travelerId: {
         type:
           mongoose.Schema.Types.ObjectId,
 
-        ref: 'User',
+        ref:
+          'User',
 
         required: [
           true,
           'Traveler ID is required for Premium membership.',
         ],
 
-        unique: true,
+        unique:
+          true,
 
-        index: true,
+        index:
+          true,
 
-        immutable: true,
+        immutable:
+          true,
       },
 
 
       /*
-       * upgradePaymentId
+       * ------------------------------------------------------
+       * PREMIUM UPGRADE PAYMENT
        * ------------------------------------------------------
        *
-       * Premium membership must never be activated because the
-       * frontend simply says:
-       *
-       *   "Payment succeeded."
-       *
-       * The backend first verifies the Premium payment with
-       * SSLCOMMERZ.
-       *
-       * After successful verification, we create the membership
-       * and remember WHICH PremiumPayment activated it.
-       *
-       * This gives us a clear relationship:
-       *
-       * PremiumPayment
-       *       ↓
-       * verified as paid
-       *       ↓
-       * PremiumMembership
-       *
-       * unique: true also prevents one Premium payment from
-       * being reused to activate two memberships.
+       * This remembers the verified PremiumPayment that originally
+       * activated the membership.
        */
       upgradePaymentId: {
         type:
           mongoose.Schema.Types.ObjectId,
 
-        ref: 'PremiumPayment',
+        ref:
+          'PremiumPayment',
 
         required: [
           true,
           'Premium upgrade payment ID is required.',
         ],
 
-        unique: true,
+        unique:
+          true,
 
-        immutable: true,
+        immutable:
+          true,
       },
 
 
       /*
-       * activatedAt
-       * ------------------------------------------------------
+       * When the traveler officially became Premium.
        *
-       * This stores the moment the traveler officially became
-       * Premium.
-       *
-       * We intentionally do NOT store an expiry date because the
-       * current Ghuraghuri design treats the 499 BDT payment as a
-       * one-time Premium upgrade rather than a subscription.
+       * Premium currently has no expiration date because our
+       * agreed system uses a one-time upgrade rather than a
+       * subscription.
        */
       activatedAt: {
-        type: Date,
+        type:
+          Date,
 
         required: [
           true,
@@ -162,54 +106,43 @@ const premiumMembershipSchema =
         default:
           Date.now,
 
-        immutable: true,
+        immutable:
+          true,
       },
 
 
       /*
-       * rewardPoints
-       * ------------------------------------------------------
+       * ======================================================
+       * ACTUAL REWARD BALANCE
+       * ======================================================
        *
-       * This is the traveler's CURRENT spendable reward balance.
-       *
+       * rewardPoints is the traveler's real reward balance.
        *
        * Example:
        *
-       * Ten qualifying payments:
+       * +100
+       * +100
+       * +100
        *
-       *   +100 × 10
-       *   = 1000 points
-       *
-       * Traveler redeems:
-       *
-       *   -1000
-       *
-       * Current balance:
-       *
-       *   0
+       * rewardPoints = 300
        *
        *
-       * IMPORTANT:
+       * Selecting points during an unpaid booking does NOT
+       * immediately subtract from this value.
        *
-       * RewardLedger is the detailed history explaining WHY the
-       * balance changed.
-       *
-       * rewardPoints is kept here as a convenient cached current
-       * balance so normal Premium-page requests do not need to
-       * manually interpret the complete reward history.
-       *
-       * Our reward reconciliation service will keep this value
-       * synchronized with the ledger.
+       * Actual subtraction happens only after successful payment.
        */
       rewardPoints: {
-        type: Number,
+        type:
+          Number,
 
         required: [
           true,
           'Reward-point balance is required.',
         ],
 
-        default: 0,
+        default:
+          0,
 
         min: [
           0,
@@ -227,41 +160,104 @@ const premiumMembershipSchema =
 
 
       /*
-       * lifetimePointsEarned
-       * ------------------------------------------------------
+       * ======================================================
+       * RESERVED REWARD BALANCE
+       * ======================================================
        *
-       * rewardPoints answers:
-       *
-       *   "How many spendable points exist right now?"
-       *
-       * lifetimePointsEarned answers:
-       *
-       *   "How many points has this traveler ever earned?"
+       * This field solves an important problem.
        *
        *
-       * Example:
+       * Suppose the traveler owns:
        *
-       * Earned over lifetime:
+       *   rewardPoints = 1000
        *
-       *   2500
        *
-       * Redeemed:
+       * They create Booking A and choose:
        *
-       *   2000
+       *   Use reward points
        *
-       * Current balance:
        *
-       *   500
+       * We must NOT deduct the 1000 yet because payment has not
+       * succeeded.
+       *
+       * But we must ALSO prevent the traveler from creating:
+       *
+       *   Booking B
+       *
+       * and selecting those same 1000 points again.
+       *
+       *
+       * Therefore:
+       *
+       * rewardPoints = 1000
+       * reservedRewardPoints = 1000
+       *
+       *
+       * Actual available points:
+       *
+       *   rewardPoints - reservedRewardPoints
+       *
+       *   1000 - 1000
+       *   = 0
+       *
+       *
+       * If Booking A payment succeeds:
+       *
+       *   actual rewardPoints are redeemed.
+       *
+       *
+       * If Booking A is declined/cancelled:
+       *
+       *   the reservation is released.
+       *
+       *
+       * This is NOT a second reward balance.
+       *
+       * It is only a temporary hold.
+       */
+      reservedRewardPoints: {
+        type:
+          Number,
+
+        required: [
+          true,
+          'Reserved reward-point balance is required.',
+        ],
+
+        default:
+          0,
+
+        min: [
+          0,
+          'Reserved reward points cannot be negative.',
+        ],
+
+        validate: {
+          validator:
+            Number.isInteger,
+
+          message:
+            'Reserved reward points must be a whole number.',
+        },
+      },
+
+
+      /*
+       * Total number of points ever earned.
+       *
+       * This does not decrease when points are redeemed.
        */
       lifetimePointsEarned: {
-        type: Number,
+        type:
+          Number,
 
         required: [
           true,
           'Lifetime earned points are required.',
         ],
 
-        default: 0,
+        default:
+          0,
 
         min: [
           0,
@@ -279,40 +275,23 @@ const premiumMembershipSchema =
 
 
       /*
-       * lifetimePointsRedeemed
-       * ------------------------------------------------------
+       * Total number of points ever successfully redeemed.
        *
-       * This is the total number of reward points that have
-       * actually been consumed through successful discounted
-       * payments.
+       * A reservation does NOT increase this value.
        *
-       *
-       * Merely selecting:
-       *
-       *   "Use reward points"
-       *
-       * while creating a booking will NOT increase this value.
-       *
-       *
-       * Our agreed flow is:
-       *
-       * booking created
-       *       ↓
-       * points selected/reserved
-       *       ↓
-       * payment succeeds
-       *       ↓
-       * points actually redeemed
+       * Successful payment does.
        */
       lifetimePointsRedeemed: {
-        type: Number,
+        type:
+          Number,
 
         required: [
           true,
           'Lifetime redeemed points are required.',
         ],
 
-        default: 0,
+        default:
+          0,
 
         min: [
           0,
@@ -330,112 +309,50 @@ const premiumMembershipSchema =
 
 
       /*
-       * historicalRewardsInitializedAt
        * ------------------------------------------------------
-       *
-       * A traveler may already have successfully paid for hotel
-       * bookings BEFORE becoming Premium.
-       *
-       * Our agreed rule says those previous successful payments
-       * should count when Premium membership begins.
-       *
-       *
-       * We do NOT want to recount that entire historical payment
-       * history every time the Premium page opens.
-       *
-       *
-       * Therefore:
+       * HISTORICAL REWARD INITIALIZATION
+       * ------------------------------------------------------
        *
        * null:
        *
-       *   The one-time historical reward initialization has not
-       *   completed.
+       *   Previous successful booking payments have not yet been
+       *   imported into the reward system.
        *
        *
        * Date:
        *
-       *   Historical payments have already been reconciled.
-       *
-       *
-       * Once this value is filled, future synchronization can
-       * focus only on payments made after the most recent reward
-       * reconciliation.
+       *   The one-time historical initialization completed.
        */
       historicalRewardsInitializedAt: {
-        type: Date,
+        type:
+          Date,
 
-        default: null,
+        default:
+          null,
       },
 
 
       /*
-       * lastRewardReconciledAt
+       * ------------------------------------------------------
+       * REWARD RECONCILIATION CURSOR
        * ------------------------------------------------------
        *
-       * This field is different from:
-       *
-       *   historicalRewardsInitializedAt
-       *
-       *
-       * historicalRewardsInitializedAt tells us:
-       *
-       *   "Did the initial historical import happen?"
-       *
-       *
-       * lastRewardReconciledAt tells us:
-       *
-       *   "Up to what moment have we checked for new successful
-       *    booking payments?"
-       *
-       *
-       * Example:
-       *
-       * 10:00 AM
-       * Historical rewards initialized.
-       *
-       * lastRewardReconciledAt = 10:00 AM
-       *
-       *
-       * 11:00 AM
-       * Traveler successfully pays for another hotel booking.
-       *
-       *
-       * 11:10 AM
-       * Premium status loads again.
-       *
-       * Instead of scanning years of payment history, the reward
-       * service can look approximately for:
-       *
-       *   paidAt > 10:00 AM
-       *
-       *
-       * After processing:
-       *
-       * lastRewardReconciledAt = 11:10 AM
-       *
-       *
-       * We initialize this as null because a new membership has
-       * not performed any reward reconciliation yet.
+       * Helps the reward synchronization service search mainly
+       * for newer successful booking payments rather than
+       * repeatedly scanning the complete payment history.
        */
       lastRewardReconciledAt: {
-        type: Date,
+        type:
+          Date,
 
-        default: null,
+        default:
+          null,
       },
     },
+
     {
-      /*
-       * Mongoose creates:
-       *
-       *   createdAt
-       *   updatedAt
-       *
-       * createdAt and activatedAt will normally be very close,
-       * but activatedAt represents the actual business event:
-       *
-       *   "Premium became active."
-       */
-      timestamps: true,
+      timestamps:
+        true,
     }
   );
 

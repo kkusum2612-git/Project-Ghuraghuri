@@ -1,5 +1,11 @@
+import Booking from '../models/booking.model.js';
 import Payment from '../models/payment.model.js';
+import PremiumMembership from '../models/premiumMembership.model.js';
 import RewardLedger from '../models/rewardLedger.model.js';
+
+import {
+  getRewardSettings,
+} from './reward-settings.service.js';
 
 
 /*
@@ -7,72 +13,49 @@ import RewardLedger from '../models/rewardLedger.model.js';
  * RAFI FEATURE 3 - REWARD SERVICE
  * ============================================================
  *
- * This service connects Rafi's Reward Points System with the
- * project's ALREADY EXISTING successful booking payments.
+ * This service is the accounting layer for reward points.
  *
  *
- * IMPORTANT OWNERSHIP BOUNDARY
- * ------------------------------------------------------------
+ * It handles:
  *
- * Fatema's Payment model already tells the project:
+ * 1. Importing successful booking payments into rewards.
  *
- *   "Was this booking payment successfully verified?"
+ * 2. Making sure one payment earns points only once.
  *
+ * 3. Turning a booking's reserved reward points into an actual
+ *    redemption after successful payment.
  *
- * Rafi does NOT change that answer.
- *
- * Rafi also does NOT modify:
- *
- *   payment.controller.js
- *   payment.routes.js
- *   payment.model.js
+ * 4. Releasing reserved points when an unpaid booking becomes
+ *    unusable, such as when the hotel declines it.
  *
  *
- * Instead, this service READS successful Payment documents:
+ * IMPORTANT:
  *
- *   Payment.status === "paid"
+ * Fatema/Kusum's Payment model remains the source of truth for:
  *
- * and creates Rafi-owned RewardLedger entries from them.
- *
- *
- * Therefore:
- *
- * Fatema's responsibility:
- *
- *   Verify payment correctly.
+ *   "Did a booking payment succeed?"
  *
  *
- * Rafi's responsibility:
+ * Rafi's RewardLedger is the source of truth for:
  *
- *   Observe the verified payment and award loyalty points once.
- *
- *
- * This is a clean integration because the payment feature does
- * not need to know that the reward system exists.
+ *   "Why did this traveler's reward balance change?"
  */
 
 
 /*
  * ------------------------------------------------------------
- * CREATE AN EARNING SOURCE KEY
+ * PAYMENT EARNING SOURCE KEY
  * ------------------------------------------------------------
- *
- * Every successful eligible booking payment may award reward
- * points exactly ONCE.
- *
- *
- * We use the payment's MongoDB ID to construct a unique key.
- *
  *
  * Example:
  *
- *   payment:68abc123:earning
+ * payment:68abc123:earning
  *
  *
- * RewardLedger.sourceKey has a UNIQUE database index.
+ * RewardLedger.sourceKey is unique.
  *
- * Therefore the same successful Payment cannot accidentally
- * create two independent earning records.
+ * Therefore the same successful payment cannot award points
+ * twice.
  */
 function buildPaymentEarningSourceKey(
   paymentId
@@ -83,37 +66,57 @@ function buildPaymentEarningSourceKey(
 
 /*
  * ------------------------------------------------------------
- * CREATE ONE REWARD ENTRY IF IT DOES NOT EXIST
+ * BOOKING REDEMPTION SOURCE KEY
  * ------------------------------------------------------------
  *
- * This function receives:
+ * Example:
  *
- *   membership
- *   payment
- *   pointsPerEligiblePayment
+ * booking:68def456:redemption
  *
  *
- * and ensures that one successful Payment has exactly one
- * corresponding:
+ * This ensures one booking cannot consume its reserved points
+ * twice even if the payment callback is received repeatedly.
+ */
+function buildBookingRedemptionSourceKey(
+  bookingId
+) {
+  return `booking:${bookingId}:redemption`;
+}
+
+
+/*
+ * ------------------------------------------------------------
+ * CREATE PAYMENT-EARNING LEDGER ENTRY
+ * ------------------------------------------------------------
  *
- *   payment_earning
- *
- * ledger record.
+ * $setOnInsert makes this idempotent.
  *
  *
- * We use an upsert rather than:
+ * First call:
  *
- *   find()
- *   then create()
+ *   create +100
  *
- * because two requests could theoretically perform reward
- * reconciliation at nearly the same time.
+ *
+ * Repeated callback:
+ *
+ *   sourceKey already exists
+ *   -> nothing new is created
  */
 async function ensurePaymentEarningLedgerEntry({
   membership,
   payment,
   pointsPerEligiblePayment,
 }) {
+  if (
+    !Number.isInteger(
+      pointsPerEligiblePayment
+    ) ||
+    pointsPerEligiblePayment <= 0
+  ) {
+    return;
+  }
+
+
   const sourceKey =
     buildPaymentEarningSourceKey(
       payment._id
@@ -121,25 +124,6 @@ async function ensurePaymentEarningLedgerEntry({
 
 
   try {
-    /*
-     * $setOnInsert means:
-     *
-     * If this sourceKey does not exist:
-     *   create the ledger entry.
-     *
-     * If this sourceKey already exists:
-     *   do not change the previous reward.
-     *
-     *
-     * This is important if the administrator later changes:
-     *
-     *   pointsPerEligiblePayment
-     *
-     * A reward that was already earned should remain the value it
-     * had when it was recorded.
-     *
-     * New eligible payments use the current setting.
-     */
     await RewardLedger.updateOne(
       {
         sourceKey,
@@ -161,20 +145,9 @@ async function ensurePaymentEarningLedgerEntry({
 
           sourceKey,
 
-          /*
-           * This points to Fatema's existing Payment record.
-           *
-           * We reference it.
-           * We do not modify it.
-           */
           paymentId:
             payment._id,
 
-          /*
-           * Payment already stores bookingId.
-           *
-           * Saving it here makes reward history easier to read.
-           */
           bookingId:
             payment.bookingId,
 
@@ -184,26 +157,22 @@ async function ensurePaymentEarningLedgerEntry({
       },
 
       {
-        upsert: true,
+        upsert:
+          true,
       }
     );
   } catch (error) {
     /*
-     * sourceKey is protected by a UNIQUE MongoDB index.
+     * MongoDB duplicate-key error.
      *
-     * If two reconciliation requests race each other, one may
-     * theoretically encounter duplicate-key error code 11000.
+     * Another request may have created the same unique reward
+     * entry at nearly the same moment.
      *
-     * That duplicate simply means:
-     *
-     *   "Another request already created this exact reward."
-     *
-     * In that particular case, there is nothing else to do.
-     *
-     * Any unrelated database error must still be thrown.
+     * That is safe and should not create another reward.
      */
     if (
-      error?.code !== 11000
+      error?.code !==
+      11000
     ) {
       throw error;
     }
@@ -213,57 +182,140 @@ async function ensurePaymentEarningLedgerEntry({
 
 /*
  * ------------------------------------------------------------
- * RECALCULATE MEMBERSHIP TOTALS FROM THE REWARD LEDGER
+ * CREATE BOOKING-REDEMPTION LEDGER ENTRY
  * ------------------------------------------------------------
  *
- * RewardLedger is our detailed accounting history.
+ * Reward earnings are positive:
+ *
+ *   +100
+ *
+ *
+ * Reward redemption is negative:
+ *
+ *   -1000
  *
  *
  * Example:
  *
- *   +100 payment earning
- *   +100 payment earning
- *   +100 payment earning
- *   -200 redemption
+ * traveler owns 2500
+ *
+ * booking reserved 2000
+ *
+ * payment succeeds
+ *
+ * ledger receives:
+ *
+ *   -2000
+ */
+async function ensureBookingRedemptionLedgerEntry({
+  membership,
+  booking,
+}) {
+  const pointsToRedeem =
+    Number(
+      booking.rewardPointsReserved ||
+        0
+    );
+
+
+  if (
+    !Number.isInteger(
+      pointsToRedeem
+    ) ||
+    pointsToRedeem <= 0
+  ) {
+    return;
+  }
+
+
+  const sourceKey =
+    buildBookingRedemptionSourceKey(
+      booking._id
+    );
+
+
+  try {
+    await RewardLedger.updateOne(
+      {
+        sourceKey,
+      },
+
+      {
+        $setOnInsert: {
+          travelerId:
+            membership.travelerId,
+
+          membershipId:
+            membership._id,
+
+          eventType:
+            'booking_redemption',
+
+          /*
+           * Negative because points leave the spendable balance.
+           */
+          pointsChange:
+            -pointsToRedeem,
+
+          sourceKey,
+
+          bookingId:
+            booking._id,
+
+          note:
+            `Reward points redeemed for hotel booking ${booking._id}.`,
+        },
+      },
+
+      {
+        upsert:
+          true,
+      }
+    );
+  } catch (error) {
+    if (
+      error?.code !==
+      11000
+    ) {
+      throw error;
+    }
+  }
+}
+
+
+/*
+ * ------------------------------------------------------------
+ * RECALCULATE ACTUAL REWARD TOTALS
+ * ------------------------------------------------------------
+ *
+ * RewardLedger contains:
+ *
+ *   + earnings
+ *   - redemptions
+ *
+ *
+ * Example:
+ *
+ * +1000 historical earnings
+ * +1500 later earnings
+ * -2000 redemption
+ * +100 latest payment reward
  *
  *
  * Current balance:
  *
- *   100 + 100 + 100 - 200
- *   = 100
+ * 600
  *
  *
- * Why calculate from RewardLedger during reconciliation?
- *
- * Because it gives us a self-repairing design.
- *
- * PremiumMembership.rewardPoints is a convenient cached balance.
- *
- * RewardLedger explains every actual earning/redemption event.
- *
- * If those cached counters ever become stale because of an
- * interrupted request, the next reconciliation can rebuild the
- * correct values from the ledger.
- *
- *
- * Importantly, we are NOT recounting the user's hotel bookings
- * here.
- *
- * We are reading Rafi's dedicated reward accounting records.
+ * PremiumMembership keeps the resulting balance as a cached
+ * value so the application does not have to calculate the whole
+ * ledger every normal page request.
  */
 async function recalculateMembershipRewardTotals(
   membership
 ) {
-  /*
-   * MongoDB aggregation lets the database calculate the totals
-   * efficiently.
-   */
   const totals =
     await RewardLedger.aggregate([
-      /*
-       * Only include ledger entries belonging to this Premium
-       * membership.
-       */
       {
         $match: {
           membershipId:
@@ -271,20 +323,6 @@ async function recalculateMembershipRewardTotals(
         },
       },
 
-
-      /*
-       * Produce three totals:
-       *
-       * currentBalance
-       *   Sum of ALL positive and negative changes.
-       *
-       * lifetimeEarned
-       *   Sum only positive changes.
-       *
-       * lifetimeRedeemed
-       *   Convert negative redemption values into positive totals
-       *   representing how many points were spent.
-       */
       {
         $group: {
           _id:
@@ -336,44 +374,43 @@ async function recalculateMembershipRewardTotals(
     ]);
 
 
-  /*
-   * A brand-new Premium traveler may have no ledger entries yet.
-   *
-   * In that case MongoDB returns an empty array.
-   *
-   * We safely use zero for all totals.
-   */
   const result =
     totals[0] || {
-      currentBalance: 0,
-      lifetimeEarned: 0,
-      lifetimeRedeemed: 0,
+      currentBalance:
+        0,
+
+      lifetimeEarned:
+        0,
+
+      lifetimeRedeemed:
+        0,
     };
 
 
-  /*
-   * A negative spendable balance should never happen because our
-   * future redemption code will prevent spending more points
-   * than the traveler owns.
-   *
-   * Math.max() gives us an additional defensive safeguard.
-   */
   membership.rewardPoints =
     Math.max(
       0,
-      result.currentBalance
+      Number(
+        result.currentBalance
+      ) || 0
     );
+
 
   membership.lifetimePointsEarned =
     Math.max(
       0,
-      result.lifetimeEarned
+      Number(
+        result.lifetimeEarned
+      ) || 0
     );
+
 
   membership.lifetimePointsRedeemed =
     Math.max(
       0,
-      result.lifetimeRedeemed
+      Number(
+        result.lifetimeRedeemed
+      ) || 0
     );
 
 
@@ -383,45 +420,109 @@ async function recalculateMembershipRewardTotals(
 
 /*
  * ------------------------------------------------------------
- * SYNCHRONIZE ELIGIBLE PAYMENT REWARDS
+ * RECALCULATE TEMPORARILY RESERVED POINTS
  * ------------------------------------------------------------
  *
- * This is the main function in this service.
+ * Actual points come from RewardLedger.
+ *
+ * Reserved points come from bookings whose status is:
+ *
+ *   rewardRedemptionStatus = reserved
  *
  *
- * The caller provides:
- *
- *   PremiumMembership
- *   current RewardSettings
+ * This gives us a useful self-repair mechanism.
  *
  *
- * We then perform:
+ * Example:
  *
- * FIRST PREMIUM SYNCHRONIZATION:
+ * Booking A:
+ *   reserved 1000
  *
- *   Find ALL successful eligible booking payments made before
- *   the synchronization started.
+ * Booking B:
+ *   reserved 2000
  *
- *
- * LATER SYNCHRONIZATIONS:
- *
- *   Find only successful payments whose paidAt value is newer
- *   than the previous synchronization cursor.
+ * Booking C:
+ *   redeemed 1000
  *
  *
- * This gives us the behavior Rafi requested:
+ * Current reserved balance:
  *
- * Old successful bookings count when Premium begins,
- * but we do not keep recounting all old bookings forever.
+ *   1000 + 2000
+ *   = 3000
+ *
+ *
+ * Redeemed/released bookings are not included.
+ */
+async function recalculateMembershipReservedPoints(
+  membership
+) {
+  const result =
+    await Booking.aggregate([
+      {
+        $match: {
+          premiumMembershipId:
+            membership._id,
+
+          rewardRedemptionStatus:
+            'reserved',
+        },
+      },
+
+      {
+        $group: {
+          _id:
+            null,
+
+          totalReserved: {
+            $sum:
+              '$rewardPointsReserved',
+          },
+        },
+      },
+    ]);
+
+
+  membership.reservedRewardPoints =
+    Math.max(
+      0,
+      Number(
+        result[0]
+          ?.totalReserved ||
+          0
+      )
+    );
+
+
+  return membership;
+}
+
+
+/*
+ * ============================================================
+ * HISTORICAL / NEW PAYMENT RECONCILIATION
+ * ============================================================
+ *
+ * This function already supports the Premium dashboard.
+ *
+ *
+ * First Premium synchronization:
+ *
+ *   previous successful payments
+ *       -> reward entries
+ *
+ *
+ * Later synchronization:
+ *
+ *   only newer successful payments
+ *       -> reward entries
+ *
+ *
+ * Unique source keys prevent duplicate earnings.
  */
 async function synchronizeRewardPointsForMembership({
   membership,
   settings,
 }) {
-  /*
-   * Defensive checks make errors easier to understand if this
-   * service is accidentally called incorrectly.
-   */
   if (
     !membership?._id ||
     !membership?.travelerId
@@ -432,9 +533,7 @@ async function synchronizeRewardPointsForMembership({
   }
 
 
-  if (
-    !settings
-  ) {
+  if (!settings) {
     throw new Error(
       'Reward settings are required for reward synchronization.'
     );
@@ -442,74 +541,28 @@ async function synchronizeRewardPointsForMembership({
 
 
   /*
-   * Capture the START time before querying Payment.
+   * Capture the synchronization start time BEFORE querying.
    *
-   *
-   * This detail prevents a subtle synchronization bug.
-   *
-   * Imagine:
-   *
-   * 10:00:00
-   * reward synchronization starts
-   *
-   * 10:00:01
-   * another booking payment becomes paid
-   *
-   * 10:00:02
-   * synchronization finishes
-   *
-   *
-   * If we simply stored 10:00:02 as our cursor, the payment from
-   * 10:00:01 might accidentally be skipped forever because it
-   * happened after our query but before the cursor was saved.
-   *
-   *
-   * Instead:
-   *
-   * syncStartedAt = 10:00:00
-   *
-   * We only process payments with:
-   *
-   *   paidAt <= 10:00:00
-   *
-   *
-   * Then we save:
-   *
-   *   lastRewardReconciledAt = 10:00:00
-   *
-   *
-   * The payment from 10:00:01 will therefore be picked up during
-   * the NEXT synchronization.
+   * Payments completed after this instant will be collected by
+   * the next synchronization instead of accidentally being
+   * skipped.
    */
   const syncStartedAt =
     new Date();
 
 
-  /*
-   * The current administrator-configured number of points awarded
-   * for a qualifying successful payment.
-   *
-   * Default:
-   *
-   *   100
-   */
   const pointsPerEligiblePayment =
     Number(
       settings.pointsPerEligiblePayment
     );
 
 
-  /*
-   * rewardSettings.model.js already validates this value.
-   *
-   * This defensive check protects the service if it is ever
-   * called with malformed plain data.
-   */
   if (
     !Number.isInteger(
       pointsPerEligiblePayment
     ) ||
-    pointsPerEligiblePayment < 0
+    pointsPerEligiblePayment <
+      0
   ) {
     throw new Error(
       'Points per eligible payment must be a non-negative whole number.'
@@ -517,35 +570,6 @@ async function synchronizeRewardPointsForMembership({
   }
 
 
-  /*
-   * ----------------------------------------------------------
-   * BASE ELIGIBILITY QUERY
-   * ----------------------------------------------------------
-   *
-   * A reward is based on a SUCCESSFULLY VERIFIED payment.
-   *
-   * Therefore:
-   *
-   * booking exists but unpaid
-   *      -> no points
-   *
-   * initiated payment
-   *      -> no points
-   *
-   * failed payment
-   *      -> no points
-   *
-   * cancelled payment
-   *      -> no points
-   *
-   * paid payment
-   *      -> eligible
-   *
-   *
-   * PremiumPayment records are in a completely different
-   * collection, so the 499 BDT account-upgrade payment cannot
-   * accidentally earn these booking reward points.
-   */
   const paymentQuery = {
     travelerId:
       membership.travelerId,
@@ -554,12 +578,6 @@ async function synchronizeRewardPointsForMembership({
       'paid',
 
     paidAt: {
-      /*
-       * Do not process payments that become successful after this
-       * synchronization started.
-       *
-       * They will be safely collected next time.
-       */
       $lte:
         syncStartedAt,
     },
@@ -567,29 +585,11 @@ async function synchronizeRewardPointsForMembership({
 
 
   /*
-   * ----------------------------------------------------------
-   * FIRST SYNCHRONIZATION VS LATER SYNCHRONIZATION
-   * ----------------------------------------------------------
-   *
-   * historicalRewardsInitializedAt === null
-   *
-   * means:
-   *
-   *   This traveler just became Premium and previous successful
-   *   booking payments need to be imported.
-   *
-   *
-   * Once historical initialization is complete, we only query
-   * payments newer than lastRewardReconciledAt.
+   * Once historical initialization is complete, search only
+   * after the previous synchronization cursor.
    */
-  const hasHistoricalInitialization =
-    Boolean(
-      membership.historicalRewardsInitializedAt
-    );
-
-
   if (
-    hasHistoricalInitialization &&
+    membership.historicalRewardsInitializedAt &&
     membership.lastRewardReconciledAt
   ) {
     paymentQuery.paidAt.$gt =
@@ -597,13 +597,6 @@ async function synchronizeRewardPointsForMembership({
   }
 
 
-  /*
-   * Find qualifying Payment records.
-   *
-   * We select only the fields Rafi's reward system needs.
-   *
-   * This avoids loading unnecessary gateway/session information.
-   */
   const eligiblePayments =
     await Payment.find(
       paymentQuery
@@ -612,40 +605,18 @@ async function synchronizeRewardPointsForMembership({
         '_id bookingId bookingType travelerId paidAt'
       )
       .sort({
-        paidAt: 1,
-        _id: 1,
+        paidAt:
+          1,
+
+        _id:
+          1,
       });
 
 
-  /*
-   * ----------------------------------------------------------
-   * CREATE MISSING LEDGER ENTRIES
-   * ----------------------------------------------------------
-   *
-   * Each payment receives one unique sourceKey.
-   *
-   * Re-running this code is safe because existing entries are not
-   * duplicated.
-   */
   for (
     const payment
     of eligiblePayments
   ) {
-    /*
-     * If an administrator configured zero points per payment, a
-     * zero-point ledger record would violate our ledger schema
-     * and would not represent a real balance change.
-     *
-     * In that unusual configuration, successful payments simply
-     * award nothing.
-     */
-    if (
-      pointsPerEligiblePayment === 0
-    ) {
-      continue;
-    }
-
-
     await ensurePaymentEarningLedgerEntry({
       membership,
 
@@ -656,30 +627,11 @@ async function synchronizeRewardPointsForMembership({
   }
 
 
-  /*
-   * ----------------------------------------------------------
-   * REBUILD CACHED MEMBERSHIP TOTALS
-   * ----------------------------------------------------------
-   *
-   * The ledger is now up to date for all payments included in
-   * this synchronization window.
-   */
   await recalculateMembershipRewardTotals(
     membership
   );
 
 
-  /*
-   * ----------------------------------------------------------
-   * MARK HISTORICAL INITIALIZATION COMPLETE
-   * ----------------------------------------------------------
-   *
-   * This is written only once.
-   *
-   * It tells future synchronizations:
-   *
-   *   "Do not scan the entire old payment history again."
-   */
   if (
     !membership.historicalRewardsInitializedAt
   ) {
@@ -688,17 +640,6 @@ async function synchronizeRewardPointsForMembership({
   }
 
 
-  /*
-   * Store our synchronization cursor.
-   *
-   * Remember:
-   *
-   * This is syncStartedAt, NOT the current time after all work
-   * finished.
-   *
-   * That protects payments completed while synchronization was
-   * running from being skipped.
-   */
   membership.lastRewardReconciledAt =
     syncStartedAt;
 
@@ -706,14 +647,316 @@ async function synchronizeRewardPointsForMembership({
   await membership.save();
 
 
-  /*
-   * Return the refreshed membership so the caller immediately
-   * sees the newly calculated balance.
-   */
   return membership;
 }
 
 
+/*
+ * ============================================================
+ * SUCCESSFUL BOOKING PAYMENT SETTLEMENT
+ * ============================================================
+ *
+ * This is called AFTER SSLCOMMERZ has been validated.
+ *
+ *
+ * It performs two different reward actions:
+ *
+ *
+ * ACTION 1
+ * ------------------------------------------------------------
+ *
+ * If this booking reserved points:
+ *
+ *   reserved -> redeemed
+ *
+ * and create:
+ *
+ *   negative RewardLedger entry
+ *
+ *
+ * ACTION 2
+ * ------------------------------------------------------------
+ *
+ * Every eligible successful booking payment receives the current
+ * configured reward earning:
+ *
+ *   +pointsPerEligiblePayment
+ *
+ *
+ * Both operations use unique source keys.
+ *
+ * Therefore receiving the successful gateway callback again does
+ * not duplicate either transaction.
+ */
+async function settleSuccessfulBookingPaymentRewards({
+  payment,
+  booking,
+}) {
+  /*
+   * Never settle rewards from an unverified payment.
+   */
+  if (
+    !payment ||
+    payment.status !==
+      'paid'
+  ) {
+    return null;
+  }
+
+
+  /*
+   * Reward points belong only to PremiumMembership.
+   *
+   *
+   * A normal traveler may successfully pay for a booking before
+   * upgrading.
+   *
+   * In that case:
+   *
+   * - do nothing now
+   * - when they later become Premium, historical reconciliation
+   *   will import that successful payment
+   */
+  const membership =
+    await PremiumMembership.findOne({
+      travelerId:
+        payment.travelerId,
+    });
+
+
+  if (!membership) {
+    return null;
+  }
+
+
+  const currentBooking =
+    booking ||
+    (
+      await Booking.findById(
+        payment.bookingId
+      )
+    );
+
+
+  if (!currentBooking) {
+    throw new Error(
+      'The booking required for reward settlement could not be found.'
+    );
+  }
+
+
+  /*
+   * ----------------------------------------------------------
+   * REDEEM RESERVED POINTS
+   * ----------------------------------------------------------
+   *
+   * We process:
+   *
+   * reserved
+   *
+   * and also:
+   *
+   * redeemed
+   *
+   *
+   * Why include "redeemed"?
+   *
+   * It gives retry recovery.
+   *
+   * If an earlier request updated the booking state but stopped
+   * before completing every reward operation, the unique ledger
+   * upsert below safely recreates any missing accounting entry.
+   */
+  if (
+    Number(
+      currentBooking.rewardPointsReserved ||
+        0
+    ) >
+      0 &&
+    (
+      currentBooking.rewardRedemptionStatus ===
+        'reserved' ||
+      currentBooking.rewardRedemptionStatus ===
+        'redeemed'
+    )
+  ) {
+    await ensureBookingRedemptionLedgerEntry({
+      membership,
+
+      booking:
+        currentBooking,
+    });
+
+
+    /*
+     * Change the reservation state only when it has not already
+     * been redeemed.
+     */
+    if (
+      currentBooking.rewardRedemptionStatus ===
+      'reserved'
+    ) {
+      currentBooking.rewardRedemptionStatus =
+        'redeemed';
+
+      currentBooking.rewardRedeemedAt =
+        currentBooking.rewardRedeemedAt ||
+        new Date();
+
+
+      await currentBooking.save();
+    }
+  }
+
+
+  /*
+   * ----------------------------------------------------------
+   * AWARD POINTS FOR THIS SUCCESSFUL PAYMENT
+   * ----------------------------------------------------------
+   *
+   * Read the CURRENT global earning policy.
+   *
+   * Example default:
+   *
+   *   +100
+   */
+  const settings =
+    await getRewardSettings();
+
+
+  const pointsPerEligiblePayment =
+    Number(
+      settings.pointsPerEligiblePayment
+    );
+
+
+  await ensurePaymentEarningLedgerEntry({
+    membership,
+
+    payment,
+
+    pointsPerEligiblePayment,
+  });
+
+
+  /*
+   * Rebuild the actual spendable balance from the accounting
+   * ledger.
+   *
+   * This includes BOTH:
+   *
+   *   redemption
+   *   earning
+   */
+  await recalculateMembershipRewardTotals(
+    membership
+  );
+
+
+  /*
+   * Rebuild the temporary reserved balance from bookings still
+   * waiting for payment.
+   *
+   * Because the current booking is now "redeemed", it disappears
+   * from this reserved total.
+   */
+  await recalculateMembershipReservedPoints(
+    membership
+  );
+
+
+  await membership.save();
+
+
+  return membership;
+}
+
+
+/*
+ * ============================================================
+ * RELEASE A BOOKING'S RESERVED REWARD POINTS
+ * ============================================================
+ *
+ * Currently used when a hotel vendor declines an unpaid booking.
+ *
+ *
+ * Example:
+ *
+ * Booking:
+ *
+ *   rewardPointsReserved = 1000
+ *   rewardRedemptionStatus = reserved
+ *
+ *
+ * Hotel declines:
+ *
+ *   rewardRedemptionStatus = released
+ *
+ *
+ * No negative RewardLedger entry is created because the traveler
+ * never actually spent those points.
+ *
+ *
+ * rewardPoints therefore remains unchanged.
+ */
+async function releaseBookingRewardReservation(
+  booking
+) {
+  if (
+    !booking ||
+    booking.rewardRedemptionStatus !==
+      'reserved' ||
+    Number(
+      booking.rewardPointsReserved ||
+        0
+    ) <=
+      0
+  ) {
+    return booking;
+  }
+
+
+  const membership =
+    await PremiumMembership.findById(
+      booking.premiumMembershipId
+    );
+
+
+  /*
+   * Mark the booking reservation itself as released.
+   */
+  booking.rewardRedemptionStatus =
+    'released';
+
+  booking.rewardReleasedAt =
+    booking.rewardReleasedAt ||
+    new Date();
+
+
+  await booking.save();
+
+
+  /*
+   * If the membership still exists, rebuild its temporary
+   * reserved balance.
+   *
+   * No actual rewardPoints are removed.
+   */
+  if (membership) {
+    await recalculateMembershipReservedPoints(
+      membership
+    );
+
+    await membership.save();
+  }
+
+
+  return booking;
+}
+
+
 export {
+  releaseBookingRewardReservation,
+  settleSuccessfulBookingPaymentRewards,
   synchronizeRewardPointsForMembership,
 };

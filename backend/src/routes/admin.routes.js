@@ -1,9 +1,13 @@
-import { Router } from 'express';
+import {
+  Router,
+} from 'express';
 
 import {
   approveProviderApplication,
+  getAdminRewardSettings,
   getPendingProviderApplications,
   rejectProviderApplication,
+  updateAdminRewardSettings,
 } from '../controllers/admin.controller.js';
 
 import {
@@ -11,48 +15,86 @@ import {
   authorizeRoles,
 } from '../middleware/auth.middleware.js';
 
-const router = Router();
 
-// Every route in this file requires:
-// 1. A valid logged-in user.
-// 2. The "admin" role.
-//
-// This protects the endpoints even if someone tries to call them
-// directly without using the frontend admin page.
+const router =
+  Router();
+
+
+/*
+ * ============================================================
+ * ADMIN ROUTE SECURITY
+ * ============================================================
+ *
+ * Every endpoint in this file requires:
+ *
+ * 1. A valid authenticated Ghuraghuri account.
+ * 2. The "admin" role.
+ *
+ * This protects both:
+ *
+ * - existing provider approval
+ * - Rafi's Premium/reward policy configuration
+ */
 router.use(
   authenticateUser,
   authorizeRoles('admin')
 );
 
-/**
- * GET /api/v1/admin/provider-applications/pending
+
+/*
+ * ------------------------------------------------------------
+ * EXISTING PROVIDER APPROVAL ROUTES
+ * ------------------------------------------------------------
  *
- * Returns hotel and guide accounts that are currently waiting
- * for administrator approval.
+ * These routes remain unchanged.
  */
 router.get(
   '/provider-applications/pending',
   getPendingProviderApplications
 );
 
-/**
- * PATCH /api/v1/admin/provider-applications/:userId/approve
- *
- * Changes a pending hotel or guide account to "approved".
- */
+
 router.patch(
   '/provider-applications/:userId/approve',
   approveProviderApplication
 );
 
-/**
- * PATCH /api/v1/admin/provider-applications/:userId/reject
- *
- * Changes a pending hotel or guide account to "rejected".
- */
+
 router.patch(
   '/provider-applications/:userId/reject',
   rejectProviderApplication
 );
+
+
+/*
+ * ============================================================
+ * RAFI FEATURE 3 - PREMIUM / REWARD POLICY
+ * ============================================================
+ *
+ * GET
+ * /api/v1/admin/reward-settings
+ *
+ * Returns the current global Premium/reward configuration.
+ */
+router.get(
+  '/reward-settings',
+  getAdminRewardSettings
+);
+
+
+/*
+ * PATCH
+ * /api/v1/admin/reward-settings
+ *
+ * Changes one or more global policy values.
+ *
+ * The backend remains authoritative; the admin frontend cannot
+ * bypass validation by modifying browser JavaScript.
+ */
+router.patch(
+  '/reward-settings',
+  updateAdminRewardSettings
+);
+
 
 export default router;

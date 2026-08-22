@@ -11,74 +11,31 @@ import {
 
 
 /*
- * ------------------------------------------------------------
+ * ============================================================
  * RAFI FEATURE 3 - PREMIUM MEMBERSHIP SERVICE
- * ------------------------------------------------------------
+ * ============================================================
  *
- * This service handles business logic related to a traveler's
- * Premium membership.
+ * This service answers:
  *
- *
- * It currently answers:
- *
- *   "Is this traveler Premium?"
- *
- *   "How many reward points do they have?"
- *
- *   "Have any new successful booking payments earned points?"
- *
- *   "What reward discount could they currently choose to use?"
- *
- *   "How far are they from their next reward step?"
- *
- *
- * This service still does NOT:
- *
- *   - contact SSLCOMMERZ
- *   - consume reward points
- *   - modify hotel bookings
- *
- *
- * Premium checkout belongs to:
- *
- *   premium-payment.service.js
- *
- *
- * Reward earning synchronization belongs to:
- *
- *   reward.service.js
- *
- *
- * Booking redemption will be implemented separately later.
+ * - Is the traveler Premium?
+ * - How many reward points do they own?
+ * - How many points are currently reserved by unpaid bookings?
+ * - How many points are actually available for a new booking?
+ * - What reward discount is currently available?
  */
 
 
 /*
- * ------------------------------------------------------------
- * GET PREMIUM MEMBERSHIP BY TRAVELER ID
- * ------------------------------------------------------------
+ * Find the PremiumMembership belonging to one traveler.
  *
- * If the traveler is Premium:
- *
- *   return PremiumMembership
- *
- *
- * If the traveler is normal:
- *
- *   return null
- *
- *
- * Not finding a membership is NOT an error.
+ * No membership means the traveler is still a normal user.
  */
 async function getPremiumMembershipByTravelerId(
   travelerId
 ) {
-  const membership =
-    await PremiumMembership.findOne({
-      travelerId,
-    });
-
-  return membership;
+  return PremiumMembership.findOne({
+    travelerId,
+  });
 }
 
 
@@ -87,97 +44,91 @@ async function getPremiumMembershipByTravelerId(
  * CALCULATE REWARD AVAILABILITY
  * ------------------------------------------------------------
  *
- * This function performs mathematics only.
+ * rewardPoints:
  *
- * It does not:
- *
- *   query MongoDB
- *   spend points
- *   change a booking
+ *   actual owned point balance
  *
  *
- * Example using default settings:
+ * reservedRewardPoints:
  *
- *   rewardPoints = 2300
- *
- *   1000 points = one reward step
- *   each step = 5%
+ *   points temporarily held by unpaid bookings
  *
  *
- * Complete reward steps:
+ * availableRewardPoints:
  *
- *   floor(2300 / 1000)
- *   = 2
- *
- *
- * Reward discount:
- *
- *   2 × 5%
- *   = 10%
+ *   rewardPoints - reservedRewardPoints
  *
  *
- * Premium base:
- *
- *   5%
- *
- *
- * Potential combined discount:
- *
- *   15%
- *
- *
- * Remaining progress:
- *
- *   300 / 1000
- *
- *
- * Points until next step:
- *
- *   700
+ * Only AVAILABLE points may be offered to another booking.
  */
 function calculateRewardAvailability({
   rewardPoints,
+  reservedRewardPoints = 0,
   settings,
 }) {
-  /*
-   * Convert to Number defensively.
-   */
-  const numericPoints =
+  const numericRewardPoints =
     Number(rewardPoints);
 
 
-  /*
-   * Invalid values safely become zero.
-   *
-   * The MongoDB schema already prevents invalid persisted values,
-   * but this keeps the helper reusable and predictable.
-   */
   const safeRewardPoints =
-    Number.isInteger(numericPoints) &&
-    numericPoints >= 0
-      ? numericPoints
+    Number.isInteger(
+      numericRewardPoints
+    ) &&
+    numericRewardPoints >= 0
+      ? numericRewardPoints
       : 0;
 
 
+  const numericReservedPoints =
+    Number(
+      reservedRewardPoints
+    );
+
+
   /*
-   * Read the CURRENT global administrator settings.
+   * Never allow the reported reserved balance to exceed the
+   * actual reward balance.
    *
-   * These are deliberately not frozen into each membership.
+   * Under normal operation this should not happen, but this
+   * keeps the response safe if old/test data is inconsistent.
    */
+  const safeReservedRewardPoints =
+    Number.isInteger(
+      numericReservedPoints
+    ) &&
+    numericReservedPoints >= 0
+      ? Math.min(
+          numericReservedPoints,
+          safeRewardPoints
+        )
+      : 0;
+
+
+  const availableRewardPoints =
+    Math.max(
+      0,
+      safeRewardPoints -
+        safeReservedRewardPoints
+    );
+
+
   const pointsPerStep =
     Number(
       settings.pointsPerDiscountStep
     );
+
 
   const discountPerStep =
     Number(
       settings.discountPercentPerStep
     );
 
+
   const premiumBaseDiscount =
     Number(
       settings.premiumBaseDiscountPercent
     );
+
 
   const maximumDiscount =
     Number(
@@ -185,58 +136,44 @@ function calculateRewardAvailability({
     );
 
 
-  /*
-   * Avoid accidental division by zero.
-   */
   const safePointsPerStep =
-    Number.isInteger(pointsPerStep) &&
+    Number.isInteger(
+      pointsPerStep
+    ) &&
     pointsPerStep > 0
       ? pointsPerStep
       : 1;
 
 
   /*
-   * Count only COMPLETE reward blocks.
+   * IMPORTANT:
+   *
+   * Reward discount is calculated from AVAILABLE points,
+   * not from all owned points.
+   *
+   * Points already reserved for Booking A cannot also be offered
+   * to Booking B.
    */
   const completeRewardSteps =
     Math.floor(
-      safeRewardPoints /
-      safePointsPerStep
+      availableRewardPoints /
+        safePointsPerStep
     );
 
 
-  /*
-   * Example:
-   *
-   * 2 blocks × 5%
-   * = 10%
-   */
   const rawRewardDiscountPercent =
     completeRewardSteps *
     discountPerStep;
 
 
-  /*
-   * Example:
-   *
-   * maximum total = 50%
-   * Premium base  = 5%
-   *
-   * Maximum reward contribution:
-   *
-   *   45%
-   */
   const maximumRewardDiscountPercent =
     Math.max(
       0,
       maximumDiscount -
-      premiumBaseDiscount
+        premiumBaseDiscount
     );
 
 
-  /*
-   * Keep the reward portion inside the global maximum.
-   */
   const usableRewardDiscountPercent =
     Math.min(
       rawRewardDiscountPercent,
@@ -244,9 +181,6 @@ function calculateRewardAvailability({
     );
 
 
-  /*
-   * Combine Premium + reward discount while respecting the cap.
-   */
   const totalDiscountIfAllAvailableRewardsUsed =
     Math.min(
       maximumDiscount,
@@ -255,29 +189,11 @@ function calculateRewardAvailability({
     );
 
 
-  /*
-   * Example:
-   *
-   * 2300 % 1000
-   * = 300 points of progress.
-   */
   const pointsProgressTowardNextStep =
-    safeRewardPoints %
+    availableRewardPoints %
     safePointsPerStep;
 
 
-  /*
-   * If progress is zero, the traveler needs another complete
-   * block for the NEXT reward step.
-   *
-   * Example:
-   *
-   * exactly 2000 points
-   *
-   * progress = 0
-   *
-   * points until NEXT step = 1000
-   */
   const pointsUntilNextStep =
     pointsProgressTowardNextStep === 0
       ? safePointsPerStep
@@ -286,8 +202,24 @@ function calculateRewardAvailability({
 
 
   return {
+    /*
+     * Total balance owned by the traveler.
+     */
     rewardPoints:
       safeRewardPoints,
+
+
+    /*
+     * Temporarily locked by unpaid bookings.
+     */
+    reservedRewardPoints:
+      safeReservedRewardPoints,
+
+
+    /*
+     * Balance currently usable on a NEW booking.
+     */
+    availableRewardPoints,
 
     completeRewardSteps,
 
@@ -306,51 +238,20 @@ function calculateRewardAvailability({
 
 /*
  * ------------------------------------------------------------
- * GET PREMIUM STATUS FOR TRAVELER
+ * GET PREMIUM STATUS
  * ------------------------------------------------------------
  *
- * This is the main read function used by:
+ * Used by:
  *
  *   GET /api/v1/premium/me
  *
  *
- * NORMAL TRAVELER:
- *
- *   No PremiumMembership exists.
- *
- *   We return:
- *
- *   isPremium = false
- *
- * plus current upgrade/settings information.
- *
- *
- * PREMIUM TRAVELER:
- *
- *   A membership exists.
- *
- *   Before returning it, we reconcile successful eligible
- *   booking payments into Rafi's RewardLedger.
- *
- *
- * This is how:
- *
- *   old successful payments
- *
- * and:
- *
- *   newly successful payments
- *
- * become visible as reward points without changing Fatema's
- * payment controller.
+ * Premium travelers first receive reward reconciliation so the
+ * response contains the newest successful-payment earnings.
  */
 async function getPremiumStatusForTraveler(
   travelerId
 ) {
-  /*
-   * Membership lookup and settings lookup are independent, so
-   * Promise.all() lets MongoDB begin both operations together.
-   */
   const [
     membership,
     settings,
@@ -370,28 +271,18 @@ async function getPremiumStatusForTraveler(
 
 
   /*
-   * ----------------------------------------------------------
-   * NORMAL TRAVELER
-   * ----------------------------------------------------------
-   *
-   * There is no RewardLedger synchronization here.
-   *
-   * Why?
-   *
-   * The traveler is not Premium yet.
-   *
-   * Their old successful payments are intentionally left alone.
-   *
-   * After they successfully purchase Premium, the first Premium
-   * status request performs the one-time historical import.
+   * Normal traveler.
    */
   if (!membership) {
     return {
-      isPremium: false,
+      isPremium:
+        false,
 
-      membership: null,
+      membership:
+        null,
 
-      rewards: null,
+      rewards:
+        null,
 
       settings:
         settingsResponse,
@@ -400,19 +291,8 @@ async function getPremiumStatusForTraveler(
 
 
   /*
-   * ----------------------------------------------------------
-   * PREMIUM TRAVELER - SYNCHRONIZE REWARDS
-   * ----------------------------------------------------------
-   *
-   * This call:
-   *
-   * 1. Imports historical successful payments once.
-   *
-   * 2. On later requests, checks only newer successful payments.
-   *
-   * 3. Creates missing RewardLedger entries.
-   *
-   * 4. Recalculates the membership's cached point totals.
+   * Update reward earnings from successful booking payments
+   * before showing the balance.
    */
   const synchronizedMembership =
     await synchronizeRewardPointsForMembership({
@@ -422,25 +302,21 @@ async function getPremiumStatusForTraveler(
     });
 
 
-  /*
-   * Calculate the discounts the traveler COULD choose to use.
-   *
-   * This does not spend anything.
-   */
   const rewards =
     calculateRewardAvailability({
       rewardPoints:
         synchronizedMembership.rewardPoints,
 
+      reservedRewardPoints:
+        synchronizedMembership.reservedRewardPoints,
+
       settings,
     });
 
 
-  /*
-   * Return a clean frontend-facing object.
-   */
   return {
-    isPremium: true,
+    isPremium:
+      true,
 
     membership: {
       id:
@@ -451,6 +327,21 @@ async function getPremiumStatusForTraveler(
 
       rewardPoints:
         synchronizedMembership.rewardPoints,
+
+      /*
+       * Rafi Feature 3:
+       *
+       * expose the temporary reservation amount so the frontend
+       * can distinguish:
+       *
+       * owned points
+       *
+       * from:
+       *
+       * currently usable points.
+       */
+      reservedRewardPoints:
+        synchronizedMembership.reservedRewardPoints,
 
       lifetimePointsEarned:
         synchronizedMembership.lifetimePointsEarned,

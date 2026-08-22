@@ -1,57 +1,111 @@
 import apiClient from '../../../api/axiosClient';
 
-/**
- * Retrieves all pending hotel and guide applications.
+
+/*
+ * ============================================================
+ * ADMIN FRONTEND API
+ * ============================================================
  *
- * The backend allows this request only for authenticated administrators.
+ * Existing functions manage provider applications.
  *
- * @returns {Promise<object>}
- * The backend response body.
+ * Rafi Feature 3 adds:
+ *
+ *   getRewardSettings()
+ *   updateRewardSettings()
+ *
+ * All requests still travel through the project's shared
+ * apiClient, so login cookies and API base configuration remain
+ * centralized.
+ */
+
+
+/*
+ * ------------------------------------------------------------
+ * EXISTING PROVIDER APPLICATION API
+ * ------------------------------------------------------------
  */
 async function getPendingProviderApplications() {
-  const response = await apiClient.get(
-    '/admin/provider-applications/pending'
-  );
+  const response =
+    await apiClient.get(
+      '/admin/provider-applications/pending'
+    );
 
   return response.data;
 }
 
-/**
- * Approves one pending hotel or guide application.
- *
- * @param {string} userId
- * The MongoDB ID of the provider account.
- *
- * @returns {Promise<object>}
- * The backend response body.
+
+async function approveProviderApplication(
+  userId
+) {
+  const response =
+    await apiClient.patch(
+      `/admin/provider-applications/${userId}/approve`
+    );
+
+  return response.data;
+}
+
+
+async function rejectProviderApplication(
+  userId
+) {
+  const response =
+    await apiClient.patch(
+      `/admin/provider-applications/${userId}/reject`
+    );
+
+  return response.data;
+}
+
+
+/*
+ * ============================================================
+ * RAFI FEATURE 3 - REWARD SETTINGS API
+ * ============================================================
  */
-async function approveProviderApplication(userId) {
-  const response = await apiClient.patch(
-    `/admin/provider-applications/${userId}/approve`
-  );
 
-  return response.data;
-}
-
-/**
- * Rejects one pending hotel or guide application.
- *
- * @param {string} userId
- * The MongoDB ID of the provider account.
- *
- * @returns {Promise<object>}
- * The backend response body.
+/*
+ * Load the authoritative global Premium/reward policy.
  */
-async function rejectProviderApplication(userId) {
-  const response = await apiClient.patch(
-    `/admin/provider-applications/${userId}/reject`
-  );
+async function getRewardSettings() {
+  const response =
+    await apiClient.get(
+      '/admin/reward-settings'
+    );
 
   return response.data;
 }
+
+
+/*
+ * Save administrator changes.
+ *
+ * settingsData may contain:
+ *
+ * premiumUpgradePrice
+ * premiumBaseDiscountPercent
+ * pointsPerEligiblePayment
+ * pointsPerDiscountStep
+ * discountPercentPerStep
+ * maximumDiscountPercent
+ */
+async function updateRewardSettings(
+  settingsData
+) {
+  const response =
+    await apiClient.patch(
+      '/admin/reward-settings',
+      settingsData
+    );
+
+  return response.data;
+}
+
 
 export {
   approveProviderApplication,
   getPendingProviderApplications,
+  getRewardSettings,
   rejectProviderApplication,
+  updateRewardSettings,
 };
