@@ -31,6 +31,7 @@ import TravelerPaymentsPage from '../features/payments/pages/TravelerPaymentsPag
 // ============================================================
 // RAFI - PUBLIC EVENT ROOMS
 // ============================================================
+import PublicRoomChatPage from '../features/publicRooms/pages/PublicRoomChatPage';
 import PublicRoomCreatePage from '../features/publicRooms/pages/PublicRoomCreatePage';
 import PublicRoomDetailsPage from '../features/publicRooms/pages/PublicRoomDetailsPage';
 import PublicRoomsPage from '../features/publicRooms/pages/PublicRoomsPage';
@@ -173,6 +174,14 @@ function AppRoutes() {
                     <PublicRoomDetailsPage />
                   }
                 />
+
+                <Route
+                  path="/event-rooms/:roomId/chat"
+                  element={
+                    <PublicRoomChatPage />
+                  }
+                />
+
               </Route>
             </Route>
 
