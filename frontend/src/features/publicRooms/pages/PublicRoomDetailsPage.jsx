@@ -16,6 +16,8 @@ import {
   requestToJoinRoom,
 } from '../api/publicRoomApi';
 
+import PublicRoomSectionNav from '../components/PublicRoomSectionNav';
+
 // ============================================================
 // SMALL DISPLAY HELPER FUNCTIONS
 // ============================================================
@@ -726,6 +728,15 @@ function PublicRoomDetailsPage() {
           {successMessage}
         </div>
       )}
+
+      {/* Public Room section navigation. */}
+      <PublicRoomSectionNav
+        roomId={roomId}
+        showChat={
+          viewerStatus === 'creator' ||
+          viewerStatus === 'member'
+        }
+      />
 
       {/* =====================================================
           MAIN WORKSPACE CONTENT

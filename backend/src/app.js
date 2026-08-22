@@ -47,6 +47,8 @@ import premiumRouter from './routes/premium.routes.js';
 // to the Express application.
 import publicRoomRouter from './routes/publicRoom.routes.js';
 
+import publicRoomChatRouter from './routes/publicRoomChat.routes.js';
+
 import tripRouter from './routes/trip.routes.js';
 
 // Shared image-upload API.
@@ -208,6 +210,12 @@ app.use(
 app.use(
   '/api/v1/public-rooms',
   publicRoomRouter
+);
+
+// Farhan - Public Event Room group chat APIs.
+app.use(
+  '/api/v1/public-room-chat',
+  publicRoomChatRouter
 );
 
 // Shared authentication APIs.
