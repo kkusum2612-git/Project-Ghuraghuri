@@ -1,4 +1,9 @@
 import {
+  useEffect,
+  useState,
+} from 'react';
+
+import {
   Link,
   Outlet,
   useLocation,
@@ -6,9 +11,142 @@ import {
 
 import useAuth from '../../auth/hooks/useAuth';
 
+/*
+ * Rafi Feature 3.
+ *
+ * The traveler workspace needs to know only ONE small piece of
+ * Premium information:
+ *
+ *   Is this traveler Premium?
+ *
+ *
+ * We use Rafi's existing Premium-status API rather than adding
+ * Premium fields to the shared authentication User object.
+ *
+ * This keeps Premium membership owned by Rafi's feature.
+ */
+import {
+  getMyPremiumStatus,
+} from '../../premium/api/premiumApi';
+
+
 function TripWorkspace() {
-  const { user } = useAuth();
-  const location = useLocation();
+  const {
+    user,
+  } = useAuth();
+
+  const location =
+    useLocation();
+
+
+  /*
+   * ----------------------------------------------------------
+   * RAFI FEATURE 3 - PREMIUM SIDEBAR STATE
+   * ----------------------------------------------------------
+   *
+   * false means:
+   *
+   *   show "Upgrade Account"
+   *
+   * true means:
+   *
+   *   show "Premium User"
+   *
+   *
+   * We deliberately default to false while loading.
+   *
+   * The sidebar itself should not be blocked just because the
+   * Premium-status request takes a moment.
+   */
+  const [
+    isPremium,
+    setIsPremium,
+  ] = useState(false);
+
+
+  /*
+   * ----------------------------------------------------------
+   * LOAD PREMIUM STATUS FOR THE SIDEBAR
+   * ----------------------------------------------------------
+   *
+   * TripWorkspace wraps all traveler pages.
+   *
+   * We therefore check membership when this shared workspace
+   * first mounts.
+   *
+   *
+   * This works especially well with the Premium payment flow:
+   *
+   * Traveler leaves Ghuraghuri
+   *        ↓
+   * SSLCOMMERZ checkout
+   *        ↓
+   * backend validates payment
+   *        ↓
+   * browser returns to /premium
+   *        ↓
+   * React application loads again
+   *        ↓
+   * TripWorkspace mounts
+   *        ↓
+   * Premium status is fetched
+   *        ↓
+   * sidebar says "Premium User"
+   *
+   *
+   * If this small sidebar request fails, we intentionally do not
+   * break the whole traveler workspace.
+   *
+   * The Premium page itself displays detailed API errors.
+   */
+  useEffect(() => {
+    let ignoreResult =
+      false;
+
+
+    async function loadPremiumStatus() {
+      try {
+        const result =
+          await getMyPremiumStatus();
+
+
+        if (
+          ignoreResult
+        ) {
+          return;
+        }
+
+
+        setIsPremium(
+          Boolean(
+            result?.data?.isPremium
+          )
+        );
+      } catch {
+        /*
+         * Do not show a workspace-wide error just because the
+         * optional Premium label could not be loaded.
+         *
+         * Existing traveler features must remain usable.
+         */
+        if (
+          !ignoreResult
+        ) {
+          setIsPremium(false);
+        }
+      }
+    }
+
+
+    void loadPremiumStatus();
+
+
+    return () => {
+      ignoreResult =
+        true;
+    };
+  }, []);
+
 
   /*
    * This is the ONE shared navigation menu used by the
@@ -26,6 +164,7 @@ function TripWorkspace() {
    *
    * Rafi:
    * - Event Rooms
+   * - Premium Membership / Reward Points
    *
    * Payments has its own navigation item because it now acts
    * as a shared transaction-history area rather than being
@@ -33,29 +172,74 @@ function TripWorkspace() {
    */
   const menuItems = [
     {
-      label: 'My Trips',
-      to: '/trips',
+      label:
+        'My Trips',
+
+      to:
+        '/trips',
     },
+
     {
-      label: 'Hotels',
-      to: '/hotels',
+      label:
+        'Hotels',
+
+      to:
+        '/hotels',
     },
+
     {
-      label: 'Bookings',
-      to: '/bookings',
+      label:
+        'Bookings',
+
+      to:
+        '/bookings',
     },
+
     {
-      label: 'Payments',
-      to: '/payments',
+      label:
+        'Payments',
+
+      to:
+        '/payments',
     },
+
 
     // Rafi - Module 1, Feature 1:
     // Public Event Room Creation & Discovery.
     {
-      label: 'Event Rooms',
-      to: '/event-rooms',
+      label:
+        'Event Rooms',
+
+      to:
+        '/event-rooms',
+    },
+
+
+    /*
+     * Rafi - Module 3, Feature 3:
+     * Premium Membership + Reward Points.
+     *
+     * The destination never changes.
+     *
+     * Only the visible label changes:
+     *
+     * normal traveler:
+     *   Upgrade Account
+     *
+     * Premium traveler:
+     *   Premium User
+     */
+    {
+      label:
+        isPremium
+          ? 'Premium User'
+          : 'Upgrade Account',
+
+      to:
+        '/premium',
     },
   ];
+
 
   /*
    * Decide which sidebar item receives the active style.
@@ -71,14 +255,18 @@ function TripWorkspace() {
    *
    * /payments/123
    */
-  function isActive(item) {
+  function isActive(
+    item
+  ) {
     return (
-      location.pathname === item.to ||
+      location.pathname ===
+        item.to ||
       location.pathname.startsWith(
         `${item.to}/`
       )
     );
   }
+
 
   return (
     <div className="min-h-[calc(100vh-72px)] bg-[#F7FAF8]">
@@ -96,7 +284,8 @@ function TripWorkspace() {
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#DCEFE4] text-sm font-bold text-[#0F6B4D]">
                 {user?.name
                   ?.charAt(0)
-                  ?.toUpperCase() || 'T'}
+                  ?.toUpperCase() ||
+                  'T'}
               </div>
 
               <div className="min-w-0">
@@ -116,21 +305,41 @@ function TripWorkspace() {
             {menuItems.map(
               (item) => {
                 const active =
-                  isActive(item);
+                  isActive(
+                    item
+                  );
 
                 return (
                   <Link
-                    key={item.label}
-                    to={item.to}
+                    /*
+                     * "to" is a better React key than label here.
+                     *
+                     * The Premium item's label changes from
+                     * "Upgrade Account" to "Premium User", but
+                     * its destination remains /premium.
+                     *
+                     * A stable key avoids unnecessarily replacing
+                     * that Link when only its text changes.
+                     */
+                    key={
+                      item.to
+                    }
+                    to={
+                      item.to
+                    }
                     className={[
                       'block rounded-lg px-4 py-3 text-center text-sm transition',
 
                       active
                         ? 'bg-[#DCEFE4] font-semibold text-[#0F6B4D]'
                         : 'bg-[#EEF7F2] text-[#17211D] hover:bg-[#DFF0E6]',
-                    ].join(' ')}
+                    ].join(
+                      ' '
+                    )}
                   >
-                    {item.label}
+                    {
+                      item.label
+                    }
                   </Link>
                 );
               }
@@ -141,8 +350,8 @@ function TripWorkspace() {
         {/* Outlet displays whichever traveler page matches
             the current route.
 
-            This lets Payments reuse exactly the same workspace
-            as Trips, Hotels, Bookings and Event Rooms. */}
+            This lets Premium reuse exactly the same workspace
+            as Trips, Hotels, Bookings, Payments and Event Rooms. */}
         <main className="min-w-0 flex-1 px-5 py-7 lg:px-8">
           <Outlet />
         </main>
@@ -150,5 +359,6 @@ function TripWorkspace() {
     </div>
   );
 }
+
 
 export default TripWorkspace;

@@ -28,6 +28,31 @@ import TravelerBookingsPage from '../features/hotels/pages/TravelerBookingsPage'
  */
 import TravelerPaymentsPage from '../features/payments/pages/TravelerPaymentsPage';
 
+
+/*
+ * ============================================================
+ * RAFI - PREMIUM MEMBERSHIP AND REWARD POINTS
+ * ============================================================
+ *
+ * PremiumPage serves two states:
+ *
+ * Normal traveler:
+ *
+ *   /premium
+ *      -> Upgrade Account page
+ *
+ *
+ * Premium traveler:
+ *
+ *   /premium
+ *      -> Premium membership/reward dashboard
+ *
+ *
+ * The backend decides whether the traveler is Premium.
+ */
+import PremiumPage from '../features/premium/pages/PremiumPage';
+
+
 // ============================================================
 // RAFI - PUBLIC EVENT ROOMS
 // ============================================================
@@ -50,6 +75,7 @@ import LoginPage from '../pages/LoginPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import RegisterPage from '../pages/RegisterPage';
 
+
 function AppRoutes() {
   return (
     <BrowserRouter>
@@ -70,6 +96,7 @@ function AppRoutes() {
             element={<RegisterPage />}
           />
 
+
           {/* Everything below this point requires login. */}
           <Route element={<ProtectedRoute />}>
             {/* ---------------- ADMIN ---------------- */}
@@ -81,6 +108,7 @@ function AppRoutes() {
                 }
               />
             </Route>
+
 
             {/* --------------- TRAVELER --------------- */}
             <Route element={<TravelerRoute />}>
@@ -121,6 +149,7 @@ function AppRoutes() {
                   }
                 />
 
+
                 {/* Kusum - Traveler Hotel Search */}
                 <Route
                   path="/hotels"
@@ -136,6 +165,7 @@ function AppRoutes() {
                   }
                 />
 
+
                 {/* Kusum - Hotel Booking */}
                 <Route
                   path="/bookings"
@@ -144,6 +174,7 @@ function AppRoutes() {
                   }
                 />
 
+
                 {/* Kusum - Payment History */}
                 <Route
                   path="/payments"
@@ -151,6 +182,7 @@ function AppRoutes() {
                     <TravelerPaymentsPage />
                   }
                 />
+
 
                 {/* Rafi - Public Event Rooms */}
                 <Route
@@ -173,8 +205,35 @@ function AppRoutes() {
                     <PublicRoomDetailsPage />
                   }
                 />
+
+
+                {/* -------------------------------------
+                    RAFI FEATURE 3 - PREMIUM
+                   -------------------------------------
+
+                    The traveler route is already protected by:
+
+                    ProtectedRoute
+                        ↓
+                    TravelerRoute
+                        ↓
+                    TripWorkspace
+
+                    Therefore hotel vendors, guides and admins
+                    cannot use this traveler Premium page.
+
+                    The backend independently enforces the same
+                    traveler-only rule.
+                */}
+                <Route
+                  path="/premium"
+                  element={
+                    <PremiumPage />
+                  }
+                />
               </Route>
             </Route>
+
 
             {/* ------------- HOTEL VENDOR ------------- */}
             <Route element={<HotelVendorRoute />}>
@@ -215,6 +274,7 @@ function AppRoutes() {
             </Route>
           </Route>
 
+
           <Route
             path="*"
             element={
@@ -226,5 +286,6 @@ function AppRoutes() {
     </BrowserRouter>
   );
 }
+
 
 export default AppRoutes;

@@ -29,6 +29,17 @@ import hotelReviewRouter from './routes/hotelReview.routes.js';
  */
 import paymentRouter from './routes/payment.routes.js';
 
+/*
+ * Rafi Feature 3 - Premium Membership and Reward Points.
+ *
+ * This router owns traveler Premium/reward APIs.
+ *
+ * It is intentionally separate from Kusum's/Fatema's existing
+ * booking-payment router because a Premium membership purchase
+ * is not a hotel or guide booking.
+ */
+import premiumRouter from './routes/premium.routes.js';
+
 // Rafi's Public Event Room router.
 //
 // We import it here because app.js is the central place
@@ -162,6 +173,25 @@ app.use(
 app.use(
   '/api/v1/payments',
   paymentRouter
+);
+
+/*
+ * Rafi Feature 3 - Premium Membership and Reward Points APIs.
+ *
+ * Example:
+ *
+ * GET /api/v1/premium/me
+ *
+ * Premium account-upgrade and reward endpoints added later will
+ * also live under this same route group.
+ *
+ * This route is separate from /api/v1/payments, so adding Rafi's
+ * feature does not alter the behavior of existing booking
+ * payments.
+ */
+app.use(
+  '/api/v1/premium',
+  premiumRouter
 );
 
 // Farhan's trip and itinerary APIs.
