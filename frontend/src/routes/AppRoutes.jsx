@@ -7,6 +7,29 @@ import {
 import AdminRoute from '../features/admin/components/AdminRoute';
 import AdminDashboardPage from '../features/admin/pages/AdminDashboardPage';
 
+/*
+ * ============================================================
+ * RAFI FEATURE 4 - AI TRAVEL PLANNER
+ * ============================================================
+ *
+ * This is Rafi's Premium-only AI Travel Planner page.
+ *
+ * The route itself will already be inside:
+ *
+ * ProtectedRoute
+ *      ↓
+ * TravelerRoute
+ *      ↓
+ * TripWorkspace
+ *
+ * Therefore only logged-in travelers can reach the traveler
+ * workspace.
+ *
+ * Premium access is also enforced separately by the Feature 4
+ * backend. The frontend sidebar lock is only for user experience.
+ */
+import AITravelPlannerPage from '../features/aiPlanner/pages/AITravelPlannerPage';
+
 import ProtectedRoute from '../features/auth/components/ProtectedRoute';
 
 import HotelVendorRoute from '../features/hotels/components/HotelVendorRoute';
@@ -347,6 +370,45 @@ function AppRoutes() {
                   path="/premium"
                   element={
                     <PremiumPage />
+                  }
+                />
+
+
+                {/* =============================================
+                    RAFI FEATURE 4 - AI TRAVEL PLANNER
+                   =============================================
+
+                    /ai-planner shows Rafi's AI Travel Planner.
+
+                    This page belongs to the same traveler
+                    workspace as My Trips, Hotels, Bookings,
+                    Payments, Event Rooms and Premium.
+
+                    A normal traveler should NOT be sent here from
+                    the sidebar. TripWorkspace will instead show a
+                    Premium-required notification.
+
+                    However, users can manually type URLs, so the
+                    frontend lock is not the real security layer.
+
+                    If a non-Premium traveler manually reaches
+                    this page and tries to generate a plan, the
+                    backend Feature 4 API still returns 403.
+
+                    A Premium traveler can use this page to:
+
+                    - fill the AI planner form
+                    - generate a real Groq itinerary
+                    - see real Ghuraghuri hotel recommendations
+                    - later view the route map
+                    - later save the plan as My Trip
+                    - later create a Public Event Room
+                */}
+
+                <Route
+                  path="/ai-planner"
+                  element={
+                    <AITravelPlannerPage />
                   }
                 />
               </Route>
