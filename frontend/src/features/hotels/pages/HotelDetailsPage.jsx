@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -530,6 +531,40 @@ function HotelDetailsPage() {
 
   /*
    * ==========================================================
+   * RAFI FEATURE 4 - HOTEL BOOKING PREFILL
+   * ==========================================================
+   *
+   * AI Travel Planner sends the recommended hotel's stay dates
+   * and traveler count through React Router navigation state.
+   *
+   * The three useState() initial values above read that navigation
+   * state immediately when HotelDetailsPage opens. Therefore the
+   * traveler sees the AI-selected dates and traveler count without
+   * having to choose them again.
+   *
+   * We intentionally do NOT copy those values into state again
+   * inside a useEffect. React's lint rules warn against synchronous
+   * setState calls in an effect because they create an unnecessary
+   * extra render. The initial state already performs the prefill.
+   *
+   * The availability effect below still reads the same navigation
+   * state and automatically checks rooms for the prefilled dates.
+   */
+
+
+  /*
+   * Tracks which prefilled hotel/date combination has already
+   * triggered an automatic availability check.
+   *
+   * Without this guard, state updates from the availability call
+   * could accidentally cause the same request to run repeatedly.
+   */
+  const autoCheckedStayKeyRef =
+    useRef('');
+
+
+  /*
+   * ==========================================================
    * RAFI FEATURE 3 - LOAD PREMIUM STATUS
    * ==========================================================
    *
@@ -714,6 +749,177 @@ function HotelDetailsPage() {
     };
   }, [
     hotelId,
+  ]);
+
+
+  /*
+   * ==========================================================
+   * RAFI FEATURE 4 - AUTO-CHECK PREFILLED HOTEL DATES
+   * ==========================================================
+   *
+   * When a traveler clicks "View & Book" from an AI-generated
+   * hotel recommendation, the AI page already passes:
+   *
+   * - checkInDate
+   * - checkOutDate
+   * - guests
+   *
+   * The date inputs are therefore already filled. This small
+   * integration improvement goes one step further and loads room
+   * availability automatically once the hotel itself has loaded.
+   *
+   * The same behavior is safe for Hotel Search navigation because
+   * it uses the same trusted Hotel Availability endpoint.
+   *
+   * We do NOT create a booking automatically. The traveler still
+   * chooses a room and explicitly clicks the existing Book button.
+   */
+  useEffect(() => {
+    const navigationCheckInDate =
+      location.state
+        ?.checkInDate;
+
+    const navigationCheckOutDate =
+      location.state
+        ?.checkOutDate;
+
+
+    if (
+      isLoading ||
+      !navigationCheckInDate ||
+      !navigationCheckOutDate
+    ) {
+      return undefined;
+    }
+
+
+    if (
+      new Date(
+        navigationCheckOutDate
+      ) <=
+      new Date(
+        navigationCheckInDate
+      )
+    ) {
+      return undefined;
+    }
+
+
+    const stayKey =
+      [
+        hotelId,
+        navigationCheckInDate,
+        navigationCheckOutDate,
+      ].join('|');
+
+
+    if (
+      autoCheckedStayKeyRef
+        .current ===
+      stayKey
+    ) {
+      return undefined;
+    }
+
+
+    autoCheckedStayKeyRef.current =
+      stayKey;
+
+
+    let ignoreResult =
+      false;
+
+
+    async function loadPrefilledAvailability() {
+      setIsCheckingAvailability(
+        true
+      );
+
+      setPageError('');
+
+
+      try {
+        const result =
+          await getHotelAvailability(
+            hotelId,
+            navigationCheckInDate,
+            navigationCheckOutDate
+          );
+
+
+        if (
+          ignoreResult
+        ) {
+          return;
+        }
+
+
+        const roomTypes =
+          result?.data
+            ?.roomTypes ??
+          [];
+
+
+        setAvailability(
+          roomTypes
+        );
+
+
+        /*
+         * Availability objects use roomTypeId instead of the
+         * embedded room document's normal _id field.
+         */
+        if (
+          roomTypes.length >
+          0
+        ) {
+          setSelectedRoomTypeId(
+            roomTypes[0]
+              .roomTypeId
+          );
+        }
+      } catch (error) {
+        if (
+          ignoreResult
+        ) {
+          return;
+        }
+
+
+        setAvailability([]);
+
+        setPageError(
+          error.response
+            ?.data
+            ?.message ||
+            'The stay dates were prefilled, but room availability could not be loaded automatically. You can check availability again manually.'
+        );
+      } finally {
+        if (
+          !ignoreResult
+        ) {
+          setIsCheckingAvailability(
+            false
+          );
+        }
+      }
+    }
+
+
+    void loadPrefilledAvailability();
+
+
+    return () => {
+      ignoreResult =
+        true;
+    };
+  }, [
+    hotelId,
+    isLoading,
+    location.state
+      ?.checkInDate,
+    location.state
+      ?.checkOutDate,
   ]);
 
 
