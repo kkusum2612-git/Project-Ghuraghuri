@@ -12,6 +12,25 @@ import {
 } from './middleware/error.middleware.js';
 
 import adminRouter from './routes/admin.routes.js';
+
+/*
+ * Rafi Feature 4 - AI Travel Planner.
+ *
+ * This router contains the Premium-only AI travel-plan APIs.
+ *
+ * The route itself checks:
+ *
+ * - whether the user is logged in,
+ * - whether the user is a traveler.
+ *
+ * The controller performs another important check:
+ *
+ * - whether the traveler has an active PremiumMembership.
+ *
+ * Only after those checks can the backend call Groq.
+ */
+import aiTravelPlanRouter from './routes/aiTravelPlan.routes.js';
+
 import authRouter from './routes/auth.routes.js';
 import bookingRouter from './routes/booking.routes.js';
 import healthRouter from './routes/health.routes.js';
@@ -194,6 +213,33 @@ app.use(
 app.use(
   '/api/v1/premium',
   premiumRouter
+);
+
+/*
+ * Rafi Feature 4 - AI Travel Planner APIs.
+ *
+ * Examples:
+ *
+ * POST /api/v1/ai/travel-plan
+ *
+ * Generates a new AI travel plan for an authenticated Premium
+ * traveler.
+ *
+ * GET /api/v1/ai/travel-plan/:planId
+ *
+ * Reloads one of that traveler's previously generated plans.
+ *
+ * Important:
+ *
+ * This route group does NOT expose the Groq API key.
+ * React only talks to our Express backend.
+ *
+ * The Express backend then talks to Groq using the private
+ * GROQ_API_KEY stored inside backend/.env.
+ */
+app.use(
+  '/api/v1/ai/travel-plan',
+  aiTravelPlanRouter
 );
 
 // Farhan's trip and itinerary APIs.
