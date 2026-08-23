@@ -115,6 +115,59 @@ function roundMoney(
 
 
 /*
+ * ============================================================
+ * RAFI FEATURE 3 - PREMIUM NIGHTLY PRICE PREVIEW
+ * ============================================================
+ *
+ * HotelDetailsPage already calculated the Premium discount for
+ * the final booking estimate, but the room cards still displayed
+ * only the original per-night price.
+ *
+ * This helper lets the details page show the same Premium base
+ * discount while the traveler is choosing a room.
+ *
+ * IMPORTANT:
+ *
+ * - The percentage comes from the admin-controlled settings.
+ * - Reward-point discounts are NOT included here because using
+ *   reward points is optional and happens later in booking.
+ * - This is only a frontend preview. The backend remains the
+ *   authority for the real booking total.
+ */
+function getPremiumNightlyPrice(
+  normalPrice,
+  discountPercent
+) {
+  const price =
+    Number(normalPrice);
+
+  const discount =
+    Number(
+      discountPercent
+    );
+
+  if (
+    !Number.isFinite(
+      price
+    ) ||
+    !Number.isFinite(
+      discount
+    )
+  ) {
+    return null;
+  }
+
+  return roundMoney(
+    price *
+      (
+        1 -
+        discount / 100
+      )
+  );
+}
+
+
+/*
  * ------------------------------------------------------------
  * REVIEW DATE DISPLAY
  * ------------------------------------------------------------
@@ -1018,6 +1071,28 @@ function HotelDetailsPage() {
             0
         )
       : 0;
+
+
+  /*
+   * ==========================================================
+   * RAFI FEATURE 3 - SHOULD NIGHTLY PREMIUM PRICE BE SHOWN?
+   * ==========================================================
+   *
+   * The admin is intentionally allowed to choose the base
+   * Premium percentage, including values below 5% or even 0%.
+   *
+   * Therefore this page never hardcodes a minimum discount.
+   *
+   * If the admin currently sets 0%, the room cards simply keep
+   * showing their normal prices.
+   */
+  const hasPremiumBaseDiscount =
+    isPremium &&
+    Number.isFinite(
+      premiumBaseDiscountPercent
+    ) &&
+    premiumBaseDiscountPercent >
+      0;
 
 
   /*
@@ -2647,15 +2722,60 @@ useRewardPoints:
 
 
                           <div className="text-right">
-                            <p className="font-bold text-[#17211D]">
-                              {formatMoney(
-                                room.pricePerNight
-                              )}
-                            </p>
+                            {/* =====================================
+                                RAFI FEATURE 3 - ROOM PREMIUM PRICE
+                               =====================================
 
-                            <p className="text-xs text-[#66756D]">
-                              / night
-                            </p>
+                                The room card used to show only the
+                                original hotel price even for a
+                                Premium traveler.
+
+                                We now preview the admin-controlled
+                                Premium base discount here as well.
+
+                                Reward-point discounts are not shown
+                                because those are optional and are
+                                selected later in the booking panel.
+                            */}
+                            {hasPremiumBaseDiscount ? (
+                              <>
+                                <p className="text-xs font-medium text-[#8A9690] line-through">
+                                  {formatMoney(
+                                    room.pricePerNight
+                                  )}
+                                </p>
+
+                                <p className="mt-0.5 font-bold text-[#0F6B4D]">
+                                  {formatMoney(
+                                    getPremiumNightlyPrice(
+                                      room.pricePerNight,
+                                      premiumBaseDiscountPercent
+                                    )
+                                  )}
+                                </p>
+
+                                <p className="mt-0.5 text-xs font-semibold text-[#0F6B4D]">
+                                  Premium{' '}
+                                  {premiumBaseDiscountPercent}% OFF
+                                </p>
+
+                                <p className="mt-1 text-xs text-[#66756D]">
+                                  / night after base discount
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="font-bold text-[#17211D]">
+                                  {formatMoney(
+                                    room.pricePerNight
+                                  )}
+                                </p>
+
+                                <p className="text-xs text-[#66756D]">
+                                  / night
+                                </p>
+                              </>
+                            )}
                           </div>
                         </div>
                       </button>
@@ -2684,13 +2804,51 @@ useRewardPoints:
                 }
               </p>
 
-              <p className="mt-1 text-sm font-bold text-[#0F6B4D]">
-                {formatMoney(
-                  selectedRoom
-                    .pricePerNight
-                )}{' '}
-                / night
-              </p>
+              {/* =========================================
+                  RAFI FEATURE 3 - SELECTED ROOM PREMIUM PRICE
+                 =========================================
+
+                  The selected-room summary now mirrors the room
+                  card price shown on the left.
+
+                  This keeps the details page visually consistent
+                  with the Premium price already shown on Hotel
+                  Search.
+              */}
+              {hasPremiumBaseDiscount ? (
+                <div className="mt-1">
+                  <p className="text-xs font-medium text-[#8A9690] line-through">
+                    {formatMoney(
+                      selectedRoom
+                        .pricePerNight
+                    )}
+                  </p>
+
+                  <p className="mt-0.5 text-sm font-bold text-[#0F6B4D]">
+                    {formatMoney(
+                      getPremiumNightlyPrice(
+                        selectedRoom
+                          .pricePerNight,
+                        premiumBaseDiscountPercent
+                      )
+                    )}{' '}
+                    / night
+                  </p>
+
+                  <p className="mt-1 text-xs font-semibold text-[#0F6B4D]">
+                    Premium{' '}
+                    {premiumBaseDiscountPercent}% OFF
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-1 text-sm font-bold text-[#0F6B4D]">
+                  {formatMoney(
+                    selectedRoom
+                      .pricePerNight
+                  )}{' '}
+                  / night
+                </p>
+              )}
             </div>
           )}
 

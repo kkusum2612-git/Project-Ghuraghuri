@@ -11,6 +11,27 @@ import {
   getHotels,
 } from '../api/hotelApi';
 
+/*
+ * ============================================================
+ * RAFI FEATURE 3 - PREMIUM HOTEL PRICE PREVIEW
+ * ============================================================
+ *
+ * Hotel Search loads the current traveler's Premium status so
+ * Premium users can see their base discount while browsing.
+ *
+ * The percentage is NOT hardcoded here.
+ *
+ * The administrator controls premiumBaseDiscountPercent, so
+ * whatever value the admin currently selected is what this
+ * page displays.
+ *
+ * This is only a frontend preview. The booking backend remains
+ * responsible for the authoritative final discount.
+ */
+import {
+  getMyPremiumStatus,
+} from '../../premium/api/premiumApi';
+
 function formatMoney(value) {
   const amount = Number(value);
 
@@ -18,7 +39,64 @@ function formatMoney(value) {
     return 'Price unavailable';
   }
 
-  return `\u09F3${amount.toLocaleString()}`;
+  return `৳${amount.toLocaleString()}`;
+}
+
+/*
+ * Keep displayed Premium prices at two decimal places.
+ *
+ * This is only for the browser preview. The backend still
+ * performs the real booking calculation.
+ */
+function roundMoney(value) {
+  return (
+    Math.round(
+      (
+        Number(value) +
+        Number.EPSILON
+      ) * 100
+    ) / 100
+  );
+}
+
+/*
+ * Calculate the Premium preview price using the CURRENT
+ * administrator-controlled base discount.
+ *
+ * We intentionally do not force a minimum discount here.
+ * Whatever percentage the admin configures is what the
+ * traveler sees.
+ */
+function getPremiumPrice(
+  normalPrice,
+  discountPercent
+) {
+  const price =
+    Number(normalPrice);
+
+  const discount =
+    Number(
+      discountPercent
+    );
+
+  if (
+    !Number.isFinite(
+      price
+    ) ||
+    !Number.isFinite(
+      discount
+    )
+  ) {
+    return null;
+  }
+
+  return roundMoney(
+    price *
+      (
+        1 -
+        discount / 100
+      )
+  );
 }
 
 function getStartingPrice(
@@ -115,6 +193,17 @@ function HotelSearchPage() {
     setPageError,
   ] = useState('');
 
+  /*
+   * Rafi Feature 3 - Premium status is used only to show the
+   * current admin-controlled base discount while browsing.
+   *
+   * If this request fails, hotel search still works normally.
+   */
+  const [
+    premiumStatus,
+    setPremiumStatus,
+  ] = useState(null);
+
   const [
     location,
     setLocation,
@@ -149,6 +238,53 @@ function HotelSearchPage() {
     maxPrice,
     setMaxPrice,
   ] = useState('');
+
+  /*
+   * Load the authenticated traveler's Premium status.
+   *
+   * We do not send travelerId, isPremium, or a discount value.
+   * The backend determines them from the logged-in user and the
+   * current Premium settings.
+   */
+  useEffect(() => {
+    let ignoreResult =
+      false;
+
+    async function loadPremiumStatus() {
+      try {
+        const result =
+          await getMyPremiumStatus();
+
+        if (ignoreResult) {
+          return;
+        }
+
+        setPremiumStatus(
+          result?.data ??
+            null
+        );
+      } catch {
+        /*
+         * Premium pricing is an optional display improvement.
+         *
+         * Do not break Kusum's hotel search page if this small
+         * request fails.
+         */
+        if (!ignoreResult) {
+          setPremiumStatus(
+            null
+          );
+        }
+      }
+    }
+
+    void loadPremiumStatus();
+
+    return () => {
+      ignoreResult =
+        true;
+    };
+  }, []);
 
   useEffect(() => {
     let ignoreResult = false;
@@ -323,8 +459,81 @@ function HotelSearchPage() {
     );
   }
 
+  /*
+   * ==========================================================
+   * RAFI FEATURE 3 - CURRENT PREMIUM PRICE SETTINGS
+   * ==========================================================
+   *
+   * The administrator controls the Premium base discount.
+   *
+   * We display exactly the current configured value.
+   *
+   * There is intentionally NO frontend minimum such as 5%.
+   *
+   * Examples:
+   *
+   * Admin sets 3%
+   *      ↓
+   * Hotel Search shows 3%
+   *
+   * Admin sets 10%
+   *      ↓
+   * Hotel Search shows 10%
+   *
+   * Admin sets 0%
+   *      ↓
+   * No discounted preview is shown.
+   */
+  const isPremium =
+    Boolean(
+      premiumStatus
+        ?.isPremium
+    );
+
+  const premiumBaseDiscountPercent =
+    isPremium
+      ? Number(
+          premiumStatus
+            ?.settings
+            ?.premiumBaseDiscountPercent ||
+            0
+        )
+      : 0;
+
+  const hasPremiumPriceDiscount =
+    isPremium &&
+    Number.isFinite(
+      premiumBaseDiscountPercent
+    ) &&
+    premiumBaseDiscountPercent >
+      0;
+
   return (
     <div>
+      {/*
+       * Rafi Feature 3 - Show Premium travelers that the hotel
+       * cards below already include their current base discount.
+       *
+       * Normal travelers never see this banner.
+       */}
+      {hasPremiumPriceDiscount && (
+        <div className="mb-4 flex flex-col gap-1 rounded-xl border border-[#BFD9CD] bg-[#EEF7F2] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-[#0F6B4D]">
+              Premium pricing is active
+            </p>
+
+            <p className="mt-0.5 text-xs text-[#66756D]">
+              Your Premium base discount is already shown on hotel prices below.
+            </p>
+          </div>
+
+          <span className="mt-2 w-fit rounded-full bg-[#DCEFE4] px-3 py-1 text-xs font-bold text-[#0F6B4D] sm:mt-0">
+            {premiumBaseDiscountPercent}% OFF
+          </span>
+        </div>
+      )}
+
       <form
         onSubmit={handleSearch}
         className="rounded-xl border border-[#DCE5E0] bg-white p-4 shadow-sm"
@@ -580,6 +789,28 @@ function HotelSearchPage() {
                       hotel.roomTypes
                     );
 
+                  /*
+                   * =================================================
+                   * RAFI FEATURE 3 - HOTEL CARD PREMIUM PRICE
+                   * =================================================
+                   *
+                   * Reward-point discounts are NOT displayed here.
+                   *
+                   * Reward redemption is optional and depends on the
+                   * traveler's available points during booking.
+                   *
+                   * The hotel card therefore previews only the current
+                   * Premium base discount configured by the admin.
+                   */
+                  const premiumStartingPrice =
+                    hasPremiumPriceDiscount &&
+                    startingPrice !== null
+                      ? getPremiumPrice(
+                          startingPrice,
+                          premiumBaseDiscountPercent
+                        )
+                      : null;
+
                   const primaryRoom =
                     hotel
                       .roomTypes?.[0];
@@ -696,18 +927,58 @@ function HotelSearchPage() {
 
                         <div className="flex flex-col justify-between border-t border-[#E5ECE8] p-4 md:border-l md:border-t-0">
                           <div className="md:text-right">
-                            <p className="text-lg font-bold text-[#17211D]">
-                              {startingPrice ===
-                              null
-                                ? '—'
-                                : formatMoney(
+                            {premiumStartingPrice !==
+                            null ? (
+                              <>
+                                {/*
+                                 * Keep the regular price visible
+                                 * with a strike-through so the
+                                 * Premium benefit is immediately
+                                 * understandable.
+                                 */}
+                                <p className="text-xs font-medium text-[#8A9690] line-through">
+                                  {formatMoney(
                                     startingPrice
                                   )}
-                            </p>
+                                </p>
 
-                            <p className="text-xs text-[#66756D]">
-                              / night
-                            </p>
+                                <p className="mt-0.5 text-lg font-bold text-[#0F6B4D]">
+                                  {formatMoney(
+                                    premiumStartingPrice
+                                  )}
+                                </p>
+
+                                <p className="mt-0.5 text-xs font-semibold text-[#0F6B4D]">
+                                  Premium{' '}
+                                  {premiumBaseDiscountPercent}% OFF
+                                </p>
+
+                                <p className="mt-1 text-xs text-[#66756D]">
+                                  / night after base discount
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                {/*
+                                 * Normal travelers, or Premium
+                                 * travelers when the admin has
+                                 * configured 0%, continue seeing
+                                 * Kusum's original price display.
+                                 */}
+                                <p className="text-lg font-bold text-[#17211D]">
+                                  {startingPrice ===
+                                  null
+                                    ? '—'
+                                    : formatMoney(
+                                        startingPrice
+                                      )}
+                                </p>
+
+                                <p className="text-xs text-[#66756D]">
+                                  / night
+                                </p>
+                              </>
+                            )}
                           </div>
 
                           <button
