@@ -28,9 +28,43 @@ import TravelerBookingsPage from '../features/hotels/pages/TravelerBookingsPage'
  */
 import TravelerPaymentsPage from '../features/payments/pages/TravelerPaymentsPage';
 
+
+/*
+ * ============================================================
+ * RAFI - PREMIUM MEMBERSHIP AND REWARD POINTS
+ * ============================================================
+ *
+ * PremiumPage serves two states:
+ *
+ * Normal traveler:
+ *
+ *   /premium
+ *      -> Upgrade Account page
+ *
+ *
+ * Premium traveler:
+ *
+ *   /premium
+ *      -> Premium membership/reward dashboard
+ *
+ *
+ * The backend decides whether the traveler is Premium.
+ */
+import PremiumPage from '../features/premium/pages/PremiumPage';
+
+
 // ============================================================
 // RAFI - PUBLIC EVENT ROOMS
 // ============================================================
+//
+// Rafi originally implemented Public Event Room creation,
+// discovery, join requests and member management.
+//
+// Farhan later added the real-time group-chat feature that works
+// inside those Public Event Rooms.
+//
+// Both features therefore share the same publicRooms frontend
+// area, but each member's feature remains logically separate.
 import PublicRoomChatPage from '../features/publicRooms/pages/PublicRoomChatPage';
 import PublicRoomCreatePage from '../features/publicRooms/pages/PublicRoomCreatePage';
 import PublicRoomDetailsPage from '../features/publicRooms/pages/PublicRoomDetailsPage';
@@ -51,11 +85,20 @@ import LoginPage from '../pages/LoginPage';
 import NotFoundPage from '../pages/NotFoundPage';
 import RegisterPage from '../pages/RegisterPage';
 
+
 function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
+        {/*
+         * MainLayout is the shared outer page structure.
+         *
+         * It contains the common application layout used across
+         * public and authenticated pages.
+         */}
         <Route element={<MainLayout />}>
+          {/* ---------------- PUBLIC ROUTES ---------------- */}
+
           <Route
             path="/"
             element={<HomePage />}
@@ -71,9 +114,23 @@ function AppRoutes() {
             element={<RegisterPage />}
           />
 
-          {/* Everything below this point requires login. */}
+
+          {/*
+           * ==================================================
+           * AUTHENTICATED AREA
+           * ==================================================
+           *
+           * Everything nested under ProtectedRoute requires a
+           * valid logged-in Ghuraghuri user.
+           *
+           * Individual role wrappers below provide additional
+           * traveler/admin/hotel-vendor restrictions.
+           */}
           <Route element={<ProtectedRoute />}>
-            {/* ---------------- ADMIN ---------------- */}
+            {/* =================================================
+                ADMIN
+               ================================================= */}
+
             <Route element={<AdminRoute />}>
               <Route
                 path="/admin"
@@ -83,10 +140,24 @@ function AppRoutes() {
               />
             </Route>
 
-            {/* --------------- TRAVELER --------------- */}
+
+            {/* =================================================
+                TRAVELER
+               =================================================
+               
+               TravelerRoute makes sure these pages are available
+               only to users whose account role is "traveler".
+
+               TripWorkspace then provides the shared traveler
+               sidebar around these pages.
+            */}
+
             <Route element={<TravelerRoute />}>
               <Route element={<TripWorkspace />}>
-                {/* Farhan - Trip Management */}
+                {/* ---------------------------------------------
+                    FARHAN - TRIP MANAGEMENT
+                   --------------------------------------------- */}
+
                 <Route
                   path="/trips"
                   element={
@@ -122,7 +193,11 @@ function AppRoutes() {
                   }
                 />
 
-                {/* Kusum - Traveler Hotel Search */}
+
+                {/* ---------------------------------------------
+                    KUSUM - TRAVELER HOTEL SEARCH
+                   --------------------------------------------- */}
+
                 <Route
                   path="/hotels"
                   element={
@@ -137,7 +212,11 @@ function AppRoutes() {
                   }
                 />
 
-                {/* Kusum - Hotel Booking */}
+
+                {/* ---------------------------------------------
+                    KUSUM - HOTEL BOOKINGS
+                   --------------------------------------------- */}
+
                 <Route
                   path="/bookings"
                   element={
@@ -145,7 +224,11 @@ function AppRoutes() {
                   }
                 />
 
-                {/* Kusum - Payment History */}
+
+                {/* ---------------------------------------------
+                    KUSUM - PAYMENT HISTORY
+                   --------------------------------------------- */}
+
                 <Route
                   path="/payments"
                   element={
@@ -153,7 +236,25 @@ function AppRoutes() {
                   }
                 />
 
-                {/* Rafi - Public Event Rooms */}
+
+                {/* =============================================
+                    RAFI - PUBLIC EVENT ROOMS
+                   =============================================
+
+                    These routes belong to Rafi's original Public
+                    Event Room features:
+
+                    /event-rooms
+                        -> discover joined/available rooms
+
+                    /event-rooms/new
+                        -> create a Public Event Room
+
+                    /event-rooms/:roomId
+                        -> room information, members and join/
+                           management functionality
+                */}
+
                 <Route
                   path="/event-rooms"
                   element={
@@ -175,6 +276,29 @@ function AppRoutes() {
                   }
                 />
 
+
+                {/* =============================================
+                    FARHAN - PUBLIC ROOM GROUP CHAT
+                   =============================================
+
+                    Farhan's latest feature adds real-time chat to
+                    the existing Public Event Room system.
+
+                    This route is intentionally KEPT alongside
+                    Rafi's existing room-detail route.
+
+                    Nothing about the existing Public Event Room
+                    route has been removed or replaced.
+
+                    Example:
+
+                    /event-rooms/abc123
+                        -> Rafi's room detail/member workspace
+
+                    /event-rooms/abc123/chat
+                        -> Farhan's real-time room chat
+                */}
+
                 <Route
                   path="/event-rooms/:roomId/chat"
                   element={
@@ -182,10 +306,57 @@ function AppRoutes() {
                   }
                 />
 
+
+                {/* =============================================
+                    RAFI FEATURE 3 - PREMIUM
+                   =============================================
+
+                    This is Rafi's Premium Membership and Reward
+                    Points page.
+
+                    The route already sits inside:
+
+                    ProtectedRoute
+                        ->
+                    TravelerRoute
+                        ->
+                    TripWorkspace
+
+                    Therefore:
+
+                    - the user must be logged in
+                    - the user must be a traveler
+                    - the normal traveler sidebar surrounds the
+                      page
+
+                    The backend separately enforces traveler-only
+                    authorization as well.
+
+                    Normal traveler:
+                    
+                    /premium
+                        -> Upgrade Account
+
+                    Premium traveler:
+
+                    /premium
+                        -> Premium User / rewards dashboard
+                */}
+
+                <Route
+                  path="/premium"
+                  element={
+                    <PremiumPage />
+                  }
+                />
               </Route>
             </Route>
 
-            {/* ------------- HOTEL VENDOR ------------- */}
+
+            {/* =================================================
+                HOTEL VENDOR
+               ================================================= */}
+
             <Route element={<HotelVendorRoute />}>
               <Route
                 element={
@@ -213,6 +384,7 @@ function AppRoutes() {
                   }
                 />
 
+
                 {/* Kusum - Hotel Reviews & Ratings */}
                 <Route
                   path="/hotel/reviews"
@@ -224,6 +396,13 @@ function AppRoutes() {
             </Route>
           </Route>
 
+
+          {/*
+           * Catch-all route.
+           *
+           * If none of the routes above match the requested URL,
+           * React displays the application's Not Found page.
+           */}
           <Route
             path="*"
             element={
@@ -235,5 +414,6 @@ function AppRoutes() {
     </BrowserRouter>
   );
 }
+
 
 export default AppRoutes;

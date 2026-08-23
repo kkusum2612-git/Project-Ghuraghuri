@@ -120,6 +120,54 @@ function getPaymentCallbackUrls() {
 }
 
 /*
+ * ------------------------------------------------------------
+ * RAFI FEATURE 3 - PREMIUM PAYMENT CALLBACK URLS
+ * ------------------------------------------------------------
+ *
+ * Fatema/Kusum's existing booking payments use:
+ *
+ *   /api/v1/payments/sslcommerz/...
+ *
+ * We do NOT send Premium payments to those callbacks because
+ * those callbacks expect a normal booking Payment document and
+ * a Booking document.
+ *
+ *
+ * Premium upgrades therefore receive their own callback URLs:
+ *
+ *   /api/v1/premium/sslcommerz/...
+ *
+ *
+ * The callback routes themselves will be implemented in the
+ * next Premium-payment slice.
+ *
+ * IMPORTANT:
+ *
+ * Adding this helper does not alter getPaymentCallbackUrls().
+ *
+ * Existing hotel payments therefore continue using exactly the
+ * same callback URLs they used before Rafi Feature 3.
+ */
+function getPremiumPaymentCallbackUrls() {
+  const backendPublicUrl =
+    getBackendPublicUrl();
+
+  return {
+    successUrl:
+      `${backendPublicUrl}/api/v1/premium/sslcommerz/success`,
+
+    failUrl:
+      `${backendPublicUrl}/api/v1/premium/sslcommerz/fail`,
+
+    cancelUrl:
+      `${backendPublicUrl}/api/v1/premium/sslcommerz/cancel`,
+
+    ipnUrl:
+      `${backendPublicUrl}/api/v1/premium/sslcommerz/ipn`,
+  };
+}
+
+/*
  * Convert a gateway HTTP response into JSON.
  *
  * If the gateway responds with something that is not valid JSON,
@@ -427,6 +475,379 @@ async function createPaymentSession({
 }
 
 /*
+ * ============================================================
+ * RAFI FEATURE 3 - CREATE PREMIUM PAYMENT SESSION
+ * ============================================================
+ *
+ * This function creates an SSLCOMMERZ checkout session for a
+ * Premium-account upgrade.
+ *
+ *
+ * It deliberately exists BESIDE the existing:
+ *
+ *   createPaymentSession()
+ *
+ * rather than replacing it.
+ *
+ *
+ * Existing function:
+ *
+ *   createPaymentSession()
+ *       -> hotel booking payment
+ *
+ *
+ * New function:
+ *
+ *   createPremiumPaymentSession()
+ *       -> Premium account upgrade
+ *
+ *
+ * Both functions reuse this file's existing:
+ *
+ *   SSLCOMMERZ endpoint constants
+ *   environment-variable reader
+ *   backend public URL helper
+ *   JSON response helper
+ *
+ *
+ * Therefore we reuse the gateway infrastructure without forcing
+ * a Premium purchase into Fatema's booking-payment logic.
+ */
+async function createPremiumPaymentSession({
+  transactionId,
+  amount,
+  customer,
+}) {
+  /*
+   * Merchant credentials are read only from backend/.env.
+   *
+   * They never come from:
+   *
+   *   the frontend
+   *   MongoDB
+   *   hardcoded source code
+   */
+  const storeId =
+    getRequiredEnvironmentVariable(
+      'SSLCOMMERZ_STORE_ID'
+    );
+
+  const storePassword =
+    getRequiredEnvironmentVariable(
+      'SSLCOMMERZ_STORE_PASSWORD'
+    );
+
+
+  /*
+   * ----------------------------------------------------------
+   * VALIDATE TRANSACTION ID
+   * ----------------------------------------------------------
+   */
+  if (
+    typeof transactionId !== 'string' ||
+    !transactionId.trim()
+  ) {
+    throw createGatewayError(
+      'A Premium payment transaction ID is required.'
+    );
+  }
+
+
+  /*
+   * SSLCOMMERZ's transaction ID limit also applies to Premium
+   * payments.
+   */
+  if (
+    transactionId.length > 30
+  ) {
+    throw createGatewayError(
+      'Premium payment transaction ID cannot exceed 30 characters.'
+    );
+  }
+
+
+  /*
+   * ----------------------------------------------------------
+   * VALIDATE AMOUNT
+   * ----------------------------------------------------------
+   *
+   * amount came from RewardSettings in our Premium service.
+   *
+   * We still validate it here because this file is the final
+   * boundary before making an external gateway request.
+   */
+  const numericAmount =
+    Number(amount);
+
+
+  if (
+    !Number.isFinite(
+      numericAmount
+    ) ||
+    numericAmount <
+      MINIMUM_PAYMENT_AMOUNT ||
+    numericAmount >
+      MAXIMUM_PAYMENT_AMOUNT
+  ) {
+    throw createGatewayError(
+      `Premium payment amount must be between ${MINIMUM_PAYMENT_AMOUNT} and ${MAXIMUM_PAYMENT_AMOUNT} BDT.`
+    );
+  }
+
+
+  /*
+   * ----------------------------------------------------------
+   * VALIDATE CUSTOMER INFORMATION
+   * ----------------------------------------------------------
+   *
+   * The current User model requires name, email and phone.
+   *
+   * These values come from req.user through our authenticated
+   * Premium controller/service.
+   */
+  if (
+    !customer?.name ||
+    !customer?.email ||
+    !customer?.phone
+  ) {
+    throw createGatewayError(
+      'Traveler name, email, and phone are required for Premium payment.'
+    );
+  }
+
+
+  /*
+   * Premium checkout uses its own Rafi-owned callback routes.
+   *
+   * The existing hotel-payment callback URLs remain untouched.
+   */
+  const {
+    successUrl,
+    failUrl,
+    cancelUrl,
+    ipnUrl,
+  } =
+    getPremiumPaymentCallbackUrls();
+
+
+  /*
+   * SSLCOMMERZ expects form-urlencoded request data.
+   */
+  const requestBody =
+    new URLSearchParams({
+      /*
+       * Merchant sandbox credentials.
+       */
+      store_id:
+        storeId,
+
+      store_passwd:
+        storePassword,
+
+
+      /*
+       * Transaction information.
+       */
+      total_amount:
+        numericAmount.toFixed(2),
+
+      currency:
+        'BDT',
+
+      tran_id:
+        transactionId,
+
+
+      /*
+       * Premium-specific callback URLs.
+       */
+      success_url:
+        successUrl,
+
+      fail_url:
+        failUrl,
+
+      cancel_url:
+        cancelUrl,
+
+      ipn_url:
+        ipnUrl,
+
+
+      /*
+       * Traveler information.
+       *
+       * Like the existing hotel-payment implementation, the
+       * project's User model does not contain a full billing
+       * address.
+       *
+       * Therefore actual traveler name/email/phone are combined
+       * with neutral Bangladesh address values required for
+       * sandbox checkout.
+       */
+      cus_name:
+        String(
+          customer.name
+        ),
+
+      cus_email:
+        String(
+          customer.email
+        ),
+
+      cus_phone:
+        String(
+          customer.phone
+        ),
+
+      cus_add1:
+        'Bangladesh',
+
+      cus_city:
+        'Dhaka',
+
+      cus_state:
+        'Dhaka',
+
+      cus_postcode:
+        '1200',
+
+      cus_country:
+        'Bangladesh',
+
+
+      /*
+       * Premium membership is a digital/service purchase.
+       *
+       * Nothing needs to be physically shipped.
+       */
+      shipping_method:
+        'NO',
+
+
+      /*
+       * Product information shown/used by the gateway.
+       *
+       * Notice that this contains no hotel-specific fields such
+       * as:
+       *
+       *   hotel_name
+       *   length_of_stay
+       *   hotel_city
+       *
+       * because Premium membership is not a hotel reservation.
+       */
+      product_name:
+        'Ghuraghuri Premium Membership',
+
+      product_category:
+        'Premium Membership',
+
+      product_profile:
+        'general',
+
+
+      /*
+       * SSLCOMMERZ returns custom values with callback data.
+       *
+       * These values are useful for debugging/reconciliation,
+       * but our future Premium callback will NOT trust them as
+       * proof of successful payment.
+       *
+       * The transaction will still be validated through the
+       * SSLCOMMERZ Validation API.
+       */
+      value_a:
+        'premium_upgrade',
+
+      value_b:
+        'rafi_feature_3',
+    });
+
+
+  let response;
+
+
+  try {
+    /*
+     * Send the checkout-session request to the exact same
+     * SSLCOMMERZ sandbox endpoint already used by the existing
+     * booking-payment feature.
+     */
+    response =
+      await fetch(
+        SSLCOMMERZ_SESSION_URL,
+        {
+          method:
+            'POST',
+
+          headers: {
+            'Content-Type':
+              'application/x-www-form-urlencoded',
+          },
+
+          body:
+            requestBody,
+        }
+      );
+  } catch {
+    throw createGatewayError(
+      'Could not connect to the SSLCOMMERZ sandbox for Premium payment.'
+    );
+  }
+
+
+  /*
+   * Reuse the existing response parser from this shared service.
+   */
+  const responseData =
+    await readJsonResponse(
+      response
+    );
+
+
+  if (
+    !response.ok
+  ) {
+    throw createGatewayError(
+      'SSLCOMMERZ rejected the Premium payment-session request.'
+    );
+  }
+
+
+  /*
+   * A successfully created hosted checkout should contain:
+   *
+   *   status = SUCCESS
+   *   GatewayPageURL
+   *   sessionkey
+   */
+  if (
+    responseData.status !==
+      'SUCCESS' ||
+    !responseData.GatewayPageURL ||
+    !responseData.sessionkey
+  ) {
+    throw createGatewayError(
+      responseData.failedreason ||
+        'SSLCOMMERZ could not create the Premium payment session.'
+    );
+  }
+
+
+  /*
+   * Return only what Rafi's Premium payment service needs.
+   */
+  return {
+    gatewayPageUrl:
+      responseData.GatewayPageURL,
+
+    sessionKey:
+      responseData.sessionkey,
+  };
+}
+
+/*
  * validatePayment()
  * ------------------------------------------------------------
  *
@@ -536,5 +957,6 @@ async function validatePayment(validationId) {
 
 export {
   createPaymentSession,
+  createPremiumPaymentSession,
   validatePayment,
 };
