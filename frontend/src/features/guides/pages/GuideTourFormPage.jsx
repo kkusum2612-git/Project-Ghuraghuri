@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { createTourPackage, getMyGuideProfile, updateTourPackage } from '../api/guideApi';
+import {
+  createTourPackage,
+  getMyGuideProfile,
+  updateTourPackage,
+  uploadGuideImages,
+} from '../api/guideApi';
 
 function createInitialForm() {
   return {
@@ -35,6 +40,7 @@ function GuideTourFormPage() {
   const isEditMode = Boolean(packageId);
 
   const [formData, setFormData] = useState(createInitialForm);
+  const [selectedFiles, setSelectedFiles] = useState([]);
 
   const [isLoading, setIsLoading] = useState(isEditMode);
 
@@ -114,6 +120,15 @@ function GuideTourFormPage() {
       ...current,
       [name]: value,
     }));
+  }
+  function handlePhotoSelection(event) {
+  const files = Array.from(
+    event.target.files || []
+  );
+
+  setSelectedFiles(files);
+
+  event.target.value = '';
   }
 
   function updateArrayField(field, index, value) {
@@ -195,6 +210,21 @@ function GuideTourFormPage() {
 
       return;
     }
+    let uploadedPhotos = cleanStringArray(formData.photos);
+
+if (selectedFiles.length > 0) {
+  const uploadResult = await uploadGuideImages(selectedFiles);
+
+  const uploadedUrls =
+    uploadResult?.data?.images?.map(
+      (image) => image.url
+    ) ?? [];
+
+  uploadedPhotos = [
+    ...uploadedPhotos,
+    ...uploadedUrls,
+  ];
+}
 
     const payload = {
       name: formData.name.trim(),
@@ -215,7 +245,7 @@ function GuideTourFormPage() {
 
       exclusions: cleanStringArray(formData.exclusions),
 
-      photos: cleanStringArray(formData.photos),
+      photos: uploadedPhotos,
 
       status: formData.status,
     };
@@ -420,17 +450,56 @@ function GuideTourFormPage() {
             onRemove={(index) => removeArrayField('exclusions', index)}
           />
 
-          <ArraySection
-            title="Package Photos"
-            description="Add image URLs that represent this tour."
-            values={formData.photos}
-            placeholder="https://example.com/tour-photo.jpg"
-            addLabel="+ Add Photo"
-            inputType="url"
-            onChange={(index, value) => updateArrayField('photos', index, value)}
-            onAdd={() => addArrayField('photos')}
-            onRemove={(index) => removeArrayField('photos', index)}
-          />
+              <div className="rounded-2xl border border-[#DCE5E0] bg-white p-6 shadow-sm">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-[#17211D]">
+                      Package Photos
+                    </h2>
+
+                    <p className="mt-1 text-sm text-[#66756D]">
+                      Upload images that represent this tour.
+                    </p>
+                  </div>
+
+                  <label className="cursor-pointer rounded-lg border border-[#08734F] px-3 py-2 text-xs font-semibold text-[#08734F] hover:bg-[#E9F6F0]">
+                    + Choose Photos
+
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      hidden
+                      onChange={handlePhotoSelection}
+                    />
+                  </label>
+                </div>
+
+
+                <div className="mt-5 flex flex-wrap gap-4">
+
+                  {formData.photos.map((photo, index) => (
+                    <img
+                      key={`existing-${index}`}
+                      src={photo}
+                      alt="Tour"
+                      className="h-20 w-20 rounded-lg border object-cover"
+                    />
+                  ))}
+
+
+                  {selectedFiles.map((file, index) => (
+                    <img
+                      key={`preview-${index}`}
+                      src={URL.createObjectURL(file)}
+                      alt="Preview"
+                      className="h-20 w-20 rounded-lg border object-cover"
+                    />
+                  ))}
+
+                </div>
+
+              </div>
         </div>
 
         <aside className="space-y-6">
