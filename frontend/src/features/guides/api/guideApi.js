@@ -47,6 +47,42 @@ async function deleteTourPackage(packageId) {
 
   return response.data;
 }
+/*
+ * -------------------------------------------------------
+ * GUIDE IMAGE UPLOAD
+ * -------------------------------------------------------
+ *
+ * Uploads profile and tour-package images.
+ *
+ * The backend expects multipart/form-data
+ * with the field name:
+ *
+ * images
+ * -------------------------------------------------------
+ */
+
+async function uploadGuideImages(files) {
+  const formData = new FormData();
+
+  files.forEach((file) => {
+    formData.append(
+      'images',
+      file
+    );
+  });
+
+  const response = await apiClient.post(
+    '/uploads/guide-images',
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }
+  );
+
+  return response.data;
+}
 
 /*
  * -------------------------------------------------------
@@ -75,4 +111,5 @@ export {
   getPublicGuides,
   updateGuideProfile,
   updateTourPackage,
+  uploadGuideImages,
 };

@@ -3,6 +3,7 @@ import {
 } from 'express';
 
 import {
+  uploadGuideImages as uploadGuideImagesController,
   uploadHotelImages as uploadHotelImagesController,
   uploadTripCover as uploadTripCoverController,
 } from '../controllers/upload.controller.js';
@@ -14,6 +15,7 @@ import {
 } from '../middleware/auth.middleware.js';
 
 import {
+  uploadGuideImages as uploadGuideImagesMiddleware,
   uploadHotelImages as uploadHotelImagesMiddleware,
   uploadTripCover as uploadTripCoverMiddleware,
 } from '../middleware/image-upload.middleware.js';
@@ -52,7 +54,31 @@ router.post(
 
   uploadHotelImagesController
 );
+/*
+ * ------------------------------------------------------------
+ * GUIDE IMAGE UPLOAD
+ * ------------------------------------------------------------
+ *
+ * POST
+ * /api/v1/uploads/guide-images
+ *
+ * A guide does not need administrator approval to upload
+ * profile or tour-package photos. Pending guides must be able
+ * to prepare their listing before the admin reviews it.
+ */
+router.post(
+  '/guide-images',
 
+  authenticateUser,
+
+  authorizeRoles(
+    'guide'
+  ),
+
+  uploadGuideImagesMiddleware,
+
+  uploadGuideImagesController
+);
 // An authenticated traveler can upload one trip cover image.
 router.post(
   '/trip-cover',

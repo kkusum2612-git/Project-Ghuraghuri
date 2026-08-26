@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 
 import useAuth from '../../auth/hooks/useAuth';
 
-import { createGuideProfile, getMyGuideProfile, updateGuideProfile } from '../api/guideApi';
+import {
+  createGuideProfile,
+  getMyGuideProfile,
+  updateGuideProfile,
+  uploadGuideImages,
+} from '../api/guideApi';
 
 function createInitialForm() {
   return {
@@ -25,6 +30,7 @@ function GuideProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -94,22 +100,51 @@ function GuideProfilePage() {
       [name]: value,
     }));
   }
+  async function handleImageSelection(event) {
+  const files = Array.from(
+    event.target.files || []
+  );
 
-  function updatePhoto(index, value) {
+  if (files.length === 0) {
+    return;
+  }
+
+  try {
+    setIsUploadingImages(true);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    const result =
+      await uploadGuideImages(files);
+
+    const uploadedUrls =
+      result?.data?.images?.map(
+        (image) => image.url
+      ) || [];
+
     setFormData((current) => ({
       ...current,
 
-      photos: current.photos.map((photo, photoIndex) => (photoIndex === index ? value : photo)),
+      photos: [
+        ...current.photos.filter(Boolean),
+        ...uploadedUrls,
+      ],
     }));
-  }
 
-  function addPhoto() {
-    setFormData((current) => ({
-      ...current,
+    setSuccessMessage(
+      'Guide images uploaded successfully.'
+    );
+  } catch (error) {
+    setErrorMessage(
+      error?.response?.data?.message ||
+      'Unable to upload guide images.'
+    );
+  } finally {
+    setIsUploadingImages(false);
 
-      photos: [...current.photos, ''],
-    }));
+    event.target.value = '';
   }
+}
 
   function removePhoto(index) {
     setFormData((current) => ({
@@ -219,7 +254,7 @@ function GuideProfilePage() {
         <h1 className="text-2xl font-bold text-[#17211D] md:text-3xl">My Profile</h1>
 
         <p className="mt-1 text-sm text-[#66756D]">
-          Manage the information travelers will see after your guide account is approved.
+            Upload photos from your device for your professional listing.
         </p>
       </div>
 
@@ -401,34 +436,45 @@ function GuideProfilePage() {
                 <h2 className="text-lg font-bold text-[#17211D]">Guide Photos</h2>
 
                 <p className="mt-1 text-sm text-[#66756D]">
-                  Add photo URLs for your professional listing.
+                  Upload photos from your device for your professional listing.
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={addPhoto}
-                className="rounded-lg border border-[#08734F] px-4 py-2 text-sm font-semibold text-[#08734F] transition hover:bg-[#E9F6F0]"
-              >
-                + Add Photo
-              </button>
+              <label
+                  className="cursor-pointer rounded-lg border border-[#08734F] px-4 py-2 text-sm font-semibold text-[#08734F] transition hover:bg-[#E9F6F0]"
+                >
+                  {isUploadingImages
+                    ? 'Uploading...'
+                    : '+ Choose Photos'}
+
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    multiple
+                    onChange={handleImageSelection}
+                    className="hidden"
+                  />
+                </label>
             </div>
 
             <div className="mt-4 space-y-3">
               {formData.photos.map((photo, index) => (
-                <div key={`photo-${index}`} className="flex gap-2">
-                  <input
-                    type="url"
-                    value={photo}
-                    onChange={(event) => updatePhoto(index, event.target.value)}
-                    placeholder="https://example.com/guide-photo.jpg"
-                    className="min-w-0 flex-1 rounded-lg border border-[#CBD6D0] px-3 py-2.5 text-sm outline-none transition focus:border-[#08734F] focus:ring-1 focus:ring-[#08734F]"
-                  />
+                <div
+                  key={`photo-${index}`}
+                  className="flex items-center gap-3"
+                >
+                  {photo && (
+                    <img
+                      src={photo}
+                      alt={`Guide photo ${index + 1}`}
+                      className="h-16 w-16 rounded-lg object-cover border"
+                    />
+                  )}
 
                   <button
                     type="button"
                     onClick={() => removePhoto(index)}
-                    className="rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
+                    className="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
                   >
                     Remove
                   </button>

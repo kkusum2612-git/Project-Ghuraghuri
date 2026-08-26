@@ -112,7 +112,97 @@ async function uploadHotelImages(
     next(error);
   }
 }
+/**
+ * Upload guide profile or tour-package photos to Supabase.
+ *
+ * Expected multipart field:
+ *
+ * images
+ *
+ * Supports up to 6 images in one request.
+ */
+async function uploadGuideImages(
+  req,
+  res,
+  next
+) {
+  try {
+    const files =
+      Array.isArray(
+        req.files
+      )
+        ? req.files
+        : [];
 
+    if (
+      files.length === 0
+    ) {
+      const error =
+        new Error(
+          'Please select at least one image to upload.'
+        );
+
+      error.statusCode = 400;
+
+      throw error;
+    }
+
+    /*
+     * Each guide gets a separate Supabase folder.
+     *
+     * Both profile photos and tour-package photos can use
+     * the returned public URLs.
+     */
+    const folder =
+      `guides/${req.user._id}`;
+
+    const uploadedImages =
+      await Promise.all(
+        files.map(
+          async (file) => {
+            const result =
+              await uploadImage({
+                buffer:
+                  file.buffer,
+
+                mimeType:
+                  file.mimetype,
+
+                folder,
+              });
+
+            return {
+              originalName:
+                file.originalname,
+
+              path:
+                result.path,
+
+              url:
+                result.publicUrl,
+            };
+          }
+        )
+      );
+
+    res.status(201).json({
+      success: true,
+
+      message:
+        uploadedImages.length ===
+        1
+          ? 'Guide image uploaded successfully.'
+          : 'Guide images uploaded successfully.',
+
+      data: {
+        images:
+          uploadedImages,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
 // Upload one traveler-selected trip cover to their Supabase folder.
 async function uploadTripCover(
   req,
@@ -171,6 +261,7 @@ async function uploadTripCover(
 }
 
 export {
+  uploadGuideImages,
   uploadHotelImages,
   uploadTripCover,
 };
