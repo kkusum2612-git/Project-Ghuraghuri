@@ -166,7 +166,63 @@ function uploadHotelImages(
     }
   );
 }
+/*
+ * Guide profile and tour-package photos use the same
+ * validation rules as hotel images.
+ *
+ * The frontend sends the files using the "images" field.
+ * A guide may upload up to 6 images in one request.
+ */
+function uploadGuideImages(
+  req,
+  res,
+  next
+) {
+  hotelImageUploader.array(
+    'images',
+    MAX_IMAGES_PER_REQUEST
+  )(
+    req,
+    res,
+    (error) => {
+      if (!error) {
+        next();
 
+        return;
+      }
+
+      if (
+        error instanceof
+        multer.MulterError
+      ) {
+        if (
+          error.code ===
+          'LIMIT_FILE_SIZE'
+        ) {
+          error.message =
+            'Each image must be 5 MB or smaller.';
+        } else if (
+          error.code ===
+          'LIMIT_FILE_COUNT'
+        ) {
+          error.message =
+            'You can upload a maximum of 6 images at once.';
+        } else {
+          error.message =
+            `Image upload failed: ${error.message}`;
+        }
+
+        error.statusCode = 400;
+      }
+
+      if (!error.statusCode) {
+        error.statusCode = 400;
+      }
+
+      next(error);
+    }
+  );
+}
 // The trip form sends one cover file using the "image" field.
 function uploadTripCover(
   req,
@@ -221,6 +277,7 @@ function uploadTripCover(
 }
 
 export {
+  uploadGuideImages,
   uploadHotelImages,
   uploadTripCover,
 };
