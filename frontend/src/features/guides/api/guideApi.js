@@ -90,8 +90,13 @@ async function uploadGuideImages(files) {
  * -------------------------------------------------------
  */
 
-async function getPublicGuides() {
-  const response = await apiClient.get('/guides');
+async function getPublicGuides(filters = {}) {
+  const response = await apiClient.get(
+    '/guides',
+    {
+      params: filters,
+    }
+  );
 
   return response.data;
 }
