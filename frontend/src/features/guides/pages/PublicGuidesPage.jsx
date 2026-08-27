@@ -9,6 +9,7 @@ const initialFilters = {
   specialty: '',
   minPrice: '',
   maxPrice: '',
+  minRating: '',
 };
 
 function PublicGuidesPage() {
@@ -126,7 +127,7 @@ function PublicGuidesPage() {
           </p>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <div>
             <label
               htmlFor="location"
@@ -223,6 +224,28 @@ function PublicGuidesPage() {
               className="w-full rounded-xl border border-[#D4DED9] px-3 py-2.5 text-sm text-[#17211D] outline-none transition focus:border-[#08734F] focus:ring-2 focus:ring-[#DDF1E5]"
             />
           </div>
+        </div>
+        <div>
+            <label
+              htmlFor="minRating"
+              className="mb-1.5 block text-sm font-medium text-[#36453D]"
+            >
+              Rating
+            </label>
+
+            <select
+              id="minRating"
+              name="minRating"
+              value={filters.minRating}
+              onChange={handleFilterChange}
+              className="w-full rounded-xl border border-[#D4DED9] bg-white px-3 py-2.5 text-sm text-[#17211D] outline-none transition focus:border-[#08734F] focus:ring-2 focus:ring-[#DDF1E5]"
+            >
+              <option value="">Any Rating</option>
+              <option value="4">4+ Stars</option>
+              <option value="3">3+ Stars</option>
+              <option value="2">2+ Stars</option>
+              <option value="1">1+ Stars</option>
+            </select>
         </div>
 
         <div className="mt-5 flex flex-wrap gap-3">
@@ -368,6 +391,9 @@ function PublicGuidesPage() {
                           <span className="mt-1 inline-flex rounded-full bg-[#DDF1E5] px-2.5 py-1 text-[11px] font-semibold text-[#08734F]">
                             Verified Guide
                           </span>
+                          <p className="mt-2 text-sm text-[#66756D]">
+                            ★ {Number(guide.averageRating || 0).toFixed(1)} ({guide.reviewCount || 0} reviews)
+                          </p>
                         </div>
 
                         {minimumPrice !== null && (

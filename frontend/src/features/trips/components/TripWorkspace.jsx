@@ -236,6 +236,21 @@ function TripWorkspace() {
       to:
         '/trips',
     },
+    {
+      label:
+        'Guides',
+
+      to:
+        '/guides',
+    },
+
+    {
+      label:
+        'Guide Bookings',
+
+      to:
+        '/guide-bookings',
+    },
 
     {
       label:

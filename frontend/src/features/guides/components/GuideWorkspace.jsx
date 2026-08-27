@@ -19,6 +19,10 @@ function GuideWorkspace() {
       label: 'My Tours',
       to: '/guide/tours',
     },
+    {
+      label: 'Bookings',
+      to: '/guide/bookings',
+    },
   ];
 
   function isActive(path) {
@@ -102,7 +106,7 @@ function GuideWorkspace() {
               Coming Later
             </p>
 
-            {['Bookings', 'Earnings', 'Reviews', 'Analytics', 'Messages'].map((label) => (
+            {['Earnings', 'Reviews', 'Analytics', 'Messages'].map((label) => (
               <div
                 key={label}
                 className="cursor-not-allowed rounded-lg px-4 py-3 text-sm text-[#A0AAA5]"

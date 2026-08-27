@@ -310,6 +310,7 @@ async function getPublicGuides(req, res, next) {
       specialty = '',
       minPrice = '',
       maxPrice = '',
+      minRating = '',
     } = req.query;
 
     const guides = await Guide.find({
@@ -340,6 +341,10 @@ async function getPublicGuides(req, res, next) {
       maxPrice === ''
         ? null
         : Number(maxPrice);
+    const parsedMinRating =
+      minRating === ''
+        ? null
+        : Number(minRating);
 
     const filteredGuides = guides
       .filter((guide) => guide.userId)
@@ -383,47 +388,60 @@ async function getPublicGuides(req, res, next) {
           );
 
         const priceMatches =
-          guide.tourPackages.length === 0
-            ? parsedMinPrice === null &&
-              parsedMaxPrice === null
-            : guide.tourPackages.some(
-                (tourPackage) => {
-                  const price =
-                    tourPackage.pricePerPerson;
+              guide.tourPackages.length === 0
+                ? parsedMinPrice === null &&
+                  parsedMaxPrice === null
+                : guide.tourPackages.some(
+                    (tourPackage) => {
+                      const price =
+                        tourPackage.pricePerPerson;
 
-                  const meetsMinimum =
-                    parsedMinPrice === null ||
-                    (
-                      !Number.isNaN(
-                        parsedMinPrice
-                      ) &&
-                      price >=
-                        parsedMinPrice
-                    );
+                      const meetsMinimum =
+                        parsedMinPrice === null ||
+                        (
+                          !Number.isNaN(
+                            parsedMinPrice
+                          ) &&
+                          price >=
+                            parsedMinPrice
+                        );
 
-                  const meetsMaximum =
-                    parsedMaxPrice === null ||
-                    (
-                      !Number.isNaN(
-                        parsedMaxPrice
-                      ) &&
-                      price <=
-                        parsedMaxPrice
-                    );
+                      const meetsMaximum =
+                        parsedMaxPrice === null ||
+                        (
+                          !Number.isNaN(
+                            parsedMaxPrice
+                          ) &&
+                          price <=
+                            parsedMaxPrice
+                        );
 
-                  return (
-                    meetsMinimum &&
-                    meetsMaximum
+                      return (
+                        meetsMinimum &&
+                        meetsMaximum
+                      );
+                    }
                   );
-                }
+
+            const ratingMatches =
+              parsedMinRating === null ||
+              (
+                !Number.isNaN(
+                  parsedMinRating
+                ) &&
+                parsedMinRating >= 0 &&
+                parsedMinRating <= 5 &&
+                (guide.averageRating || 0) >=
+                  parsedMinRating
               );
 
-        return (
-          locationMatches &&
-          languageMatches &&
-          specialtyMatches &&
-          priceMatches
-        );
+            return (
+              locationMatches &&
+              languageMatches &&
+              specialtyMatches &&
+              priceMatches &&
+              ratingMatches
+            );
       });
 
     return res.status(200).json({

@@ -37,27 +37,25 @@ async function createTourPackage(packageData) {
 }
 
 async function updateTourPackage(packageId, packageData) {
-  const response = await apiClient.patch(`/guides/me/packages/${packageId}`, packageData);
+  const response = await apiClient.patch(
+    `/guides/me/packages/${packageId}`,
+    packageData
+  );
 
   return response.data;
 }
 
 async function deleteTourPackage(packageId) {
-  const response = await apiClient.delete(`/guides/me/packages/${packageId}`);
+  const response = await apiClient.delete(
+    `/guides/me/packages/${packageId}`
+  );
 
   return response.data;
 }
+
 /*
  * -------------------------------------------------------
  * GUIDE IMAGE UPLOAD
- * -------------------------------------------------------
- *
- * Uploads profile and tour-package images.
- *
- * The backend expects multipart/form-data
- * with the field name:
- *
- * images
  * -------------------------------------------------------
  */
 
@@ -65,10 +63,7 @@ async function uploadGuideImages(files) {
   const formData = new FormData();
 
   files.forEach((file) => {
-    formData.append(
-      'images',
-      file
-    );
+    formData.append('images', file);
   });
 
   const response = await apiClient.post(
@@ -91,12 +86,9 @@ async function uploadGuideImages(files) {
  */
 
 async function getPublicGuides(filters = {}) {
-  const response = await apiClient.get(
-    '/guides',
-    {
-      params: filters,
-    }
-  );
+  const response = await apiClient.get('/guides', {
+    params: filters,
+  });
 
   return response.data;
 }
@@ -107,13 +99,62 @@ async function getPublicGuideById(guideId) {
   return response.data;
 }
 
+/*
+ * -------------------------------------------------------
+ * GUIDE BOOKINGS
+ * -------------------------------------------------------
+ */
+
+async function createGuideBooking(bookingData) {
+  const response = await apiClient.post(
+    '/guide-bookings',
+    bookingData
+  );
+
+  return response.data;
+}
+
+async function getMyGuideBookings() {
+  const response = await apiClient.get(
+    '/guide-bookings/me'
+  );
+
+  return response.data;
+}
+
+async function getReceivedGuideBookings() {
+  const response = await apiClient.get(
+    '/guide-bookings/received'
+  );
+
+  return response.data;
+}
+
+async function updateGuideBookingStatus(
+  bookingId,
+  bookingStatus
+) {
+  const response = await apiClient.patch(
+    `/guide-bookings/${bookingId}/status`,
+    {
+      bookingStatus,
+    }
+  );
+
+  return response.data;
+}
+
 export {
+  createGuideBooking,
   createGuideProfile,
   createTourPackage,
   deleteTourPackage,
+  getMyGuideBookings,
   getMyGuideProfile,
   getPublicGuideById,
   getPublicGuides,
+  getReceivedGuideBookings,
+  updateGuideBookingStatus,
   updateGuideProfile,
   updateTourPackage,
   uploadGuideImages,
