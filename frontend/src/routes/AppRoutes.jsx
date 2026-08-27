@@ -101,6 +101,7 @@ import GuideProfilePage from '../features/guides/pages/GuideProfilePage';
 import GuideTourFormPage from '../features/guides/pages/GuideTourFormPage';
 import GuideToursPage from '../features/guides/pages/GuideToursPage';
 import PublicGuidesPage from '../features/guides/pages/PublicGuidesPage';
+import PublicGuideDetailsPage from '../features/guides/pages/PublicGuideDetailsPage';
 
 import TravelerRoute from '../features/trips/components/TravelerRoute';
 import TripWorkspace from '../features/trips/components/TripWorkspace';
@@ -148,6 +149,10 @@ function AppRoutes() {
           <Route
             path="/guides"
             element={<PublicGuidesPage />}
+          />
+          <Route
+            path="/guides/:guideId"
+            element={<PublicGuideDetailsPage />}
           />
 
 
