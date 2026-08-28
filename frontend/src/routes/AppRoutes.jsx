@@ -105,6 +105,8 @@ import PublicGuideDetailsPage from '../features/guides/pages/PublicGuideDetailsP
 import GuideBookingPage from '../features/guides/pages/GuideBookingPage';
 import TravelerGuideBookingsPage from '../features/guides/pages/TravelerGuideBookingsPage';
 import GuideReceivedBookingsPage from '../features/guides/pages/GuideReceivedBookingsPage';
+import GuideReviewsPage from '../features/guides/pages/GuideReviewsPage';
+import GuideAnalyticsPage from '../features/guides/pages/GuideAnalyticsPage';
 
 import TravelerRoute from '../features/trips/components/TravelerRoute';
 import TripWorkspace from '../features/trips/components/TripWorkspace';
@@ -535,6 +537,19 @@ function AppRoutes() {
                   path="/guide/bookings"
                   element={
                     <GuideReceivedBookingsPage />
+                  }
+                />
+                <Route
+                  path="/guide/reviews"
+                  element={
+                    <GuideReviewsPage />
+                  }
+                />
+
+                <Route
+                  path="/guide/analytics"
+                  element={
+                    <GuideAnalyticsPage />
                   }
                 />
 

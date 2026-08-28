@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { getPublicGuideById } from '../api/guideApi';
+import PublicGuideReviewsSection from '../components/PublicGuideReviewsSection';
 
 function formatDate(dateValue) {
   return new Intl.DateTimeFormat('en-BD', {
@@ -358,6 +359,9 @@ function PublicGuideDetailsPage() {
           </div>
         )}
       </div>
+      <PublicGuideReviewsSection
+      guideId={guide._id}
+      />
     </section>
   );
 }

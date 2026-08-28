@@ -144,16 +144,74 @@ async function updateGuideBookingStatus(
   return response.data;
 }
 
+/*
+ * -------------------------------------------------------
+ * GUIDE REVIEWS
+ * -------------------------------------------------------
+ */
+
+async function createGuideReview(reviewData) {
+  const response = await apiClient.post(
+    '/guide-reviews',
+    reviewData
+  );
+
+  return response.data;
+}
+
+async function getPublicGuideReviews(guideId) {
+  const response = await apiClient.get(
+    `/guide-reviews/guide/${guideId}`
+  );
+
+  return response.data;
+}
+
+async function getTravelerGuideReviews() {
+  const response = await apiClient.get(
+    '/guide-reviews/traveler/me'
+  );
+
+  return response.data;
+}
+
+async function getMyGuideReviews() {
+  const response = await apiClient.get(
+    '/guide-reviews/me'
+  );
+
+  return response.data;
+}
+
+/*
+ * -------------------------------------------------------
+ * GUIDE ANALYTICS
+ * -------------------------------------------------------
+ */
+
+async function getMyGuideAnalytics() {
+  const response = await apiClient.get(
+    '/guide-reviews/analytics/me'
+  );
+
+  return response.data;
+}
+
 export {
   createGuideBooking,
   createGuideProfile,
+  createGuideReview,
   createTourPackage,
   deleteTourPackage,
+  getMyGuideAnalytics,
   getMyGuideBookings,
   getMyGuideProfile,
+  getMyGuideReviews,
   getPublicGuideById,
+  getPublicGuideReviews,
   getPublicGuides,
   getReceivedGuideBookings,
+  getTravelerGuideReviews,
   updateGuideBookingStatus,
   updateGuideProfile,
   updateTourPackage,
