@@ -132,6 +132,18 @@ const guideSchema = new mongoose.Schema(
       default: 0,
       min: [0, 'Years of experience cannot be negative.'],
     },
+    averageRating: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5,
+    },
+
+    reviewCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
 
     photos: {
       type: [String],

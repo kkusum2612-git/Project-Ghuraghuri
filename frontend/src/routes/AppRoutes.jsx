@@ -101,6 +101,10 @@ import GuideProfilePage from '../features/guides/pages/GuideProfilePage';
 import GuideTourFormPage from '../features/guides/pages/GuideTourFormPage';
 import GuideToursPage from '../features/guides/pages/GuideToursPage';
 import PublicGuidesPage from '../features/guides/pages/PublicGuidesPage';
+import PublicGuideDetailsPage from '../features/guides/pages/PublicGuideDetailsPage';
+import GuideBookingPage from '../features/guides/pages/GuideBookingPage';
+import TravelerGuideBookingsPage from '../features/guides/pages/TravelerGuideBookingsPage';
+import GuideReceivedBookingsPage from '../features/guides/pages/GuideReceivedBookingsPage';
 
 import TravelerRoute from '../features/trips/components/TravelerRoute';
 import TripWorkspace from '../features/trips/components/TripWorkspace';
@@ -148,6 +152,10 @@ function AppRoutes() {
           <Route
             path="/guides"
             element={<PublicGuidesPage />}
+          />
+          <Route
+            path="/guides/:guideId"
+            element={<PublicGuideDetailsPage />}
           />
 
 
@@ -226,6 +234,22 @@ function AppRoutes() {
                   path="/trips/:tripId/edit"
                   element={
                     <TripFormPage />
+                  }
+                />
+                {/* ---------------------------------------------
+                    TAFSIR - GUIDE BOOKING
+                  --------------------------------------------- */}
+
+                <Route
+                  path="/guides/:guideId/book/:packageId"
+                  element={
+                    <GuideBookingPage />
+                  }
+                />
+                <Route
+                  path="/guide-bookings"
+                  element={
+                    <TravelerGuideBookingsPage />
                   }
                 />
 
@@ -505,6 +529,12 @@ function AppRoutes() {
                   path="/guide/tours"
                   element={
                     <GuideToursPage />
+                  }
+                />
+                <Route
+                  path="/guide/bookings"
+                  element={
+                    <GuideReceivedBookingsPage />
                   }
                 />
 

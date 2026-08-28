@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import express from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import guideBookingRoutes from './routes/guideBooking.routes.js';
 
 import {
   errorHandler,
@@ -276,7 +277,10 @@ app.use(
   '/api/v1/guides',
   guideRouter
 );
-
+app.use(
+  '/api/v1/guide-bookings',
+  guideBookingRoutes
+);
 // Shared administrator APIs.
 app.use(
   '/api/v1/admin',

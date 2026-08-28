@@ -302,8 +302,17 @@ async function deleteTourPackage(req, res, next) {
  * Public API.
  * Only approved, active guide accounts are shown.
  */
-async function getPublicGuides(_req, res, next) {
+async function getPublicGuides(req, res, next) {
   try {
+    const {
+      location = '',
+      language = '',
+      specialty = '',
+      minPrice = '',
+      maxPrice = '',
+      minRating = '',
+    } = req.query;
+
     const guides = await Guide.find({
       userId: {
         $type: 'objectId',
@@ -323,19 +332,130 @@ async function getPublicGuides(_req, res, next) {
       })
       .lean();
 
-    const approvedGuides = guides
+    const parsedMinPrice =
+      minPrice === ''
+        ? null
+        : Number(minPrice);
+
+    const parsedMaxPrice =
+      maxPrice === ''
+        ? null
+        : Number(maxPrice);
+    const parsedMinRating =
+      minRating === ''
+        ? null
+        : Number(minRating);
+
+    const filteredGuides = guides
       .filter((guide) => guide.userId)
       .map((guide) => ({
         ...guide,
-        tourPackages: guide.tourPackages.filter((tourPackage) => tourPackage.status === 'active'),
-      }));
+
+        tourPackages: guide.tourPackages.filter(
+          (tourPackage) =>
+            tourPackage.status === 'active'
+        ),
+      }))
+      .filter((guide) => {
+        const locationMatches =
+          !location ||
+          guide.location
+            ?.toLowerCase()
+            .includes(
+              location.toLowerCase()
+            );
+
+        const languageMatches =
+          !language ||
+          guide.languages?.some(
+            (item) =>
+              item
+                .toLowerCase()
+                .includes(
+                  language.toLowerCase()
+                )
+          );
+
+        const specialtyMatches =
+          !specialty ||
+          guide.specialties?.some(
+            (item) =>
+              item
+                .toLowerCase()
+                .includes(
+                  specialty.toLowerCase()
+                )
+          );
+
+        const priceMatches =
+              guide.tourPackages.length === 0
+                ? parsedMinPrice === null &&
+                  parsedMaxPrice === null
+                : guide.tourPackages.some(
+                    (tourPackage) => {
+                      const price =
+                        tourPackage.pricePerPerson;
+
+                      const meetsMinimum =
+                        parsedMinPrice === null ||
+                        (
+                          !Number.isNaN(
+                            parsedMinPrice
+                          ) &&
+                          price >=
+                            parsedMinPrice
+                        );
+
+                      const meetsMaximum =
+                        parsedMaxPrice === null ||
+                        (
+                          !Number.isNaN(
+                            parsedMaxPrice
+                          ) &&
+                          price <=
+                            parsedMaxPrice
+                        );
+
+                      return (
+                        meetsMinimum &&
+                        meetsMaximum
+                      );
+                    }
+                  );
+
+            const ratingMatches =
+              parsedMinRating === null ||
+              (
+                !Number.isNaN(
+                  parsedMinRating
+                ) &&
+                parsedMinRating >= 0 &&
+                parsedMinRating <= 5 &&
+                (guide.averageRating || 0) >=
+                  parsedMinRating
+              );
+
+            return (
+              locationMatches &&
+              languageMatches &&
+              specialtyMatches &&
+              priceMatches &&
+              ratingMatches
+            );
+      });
 
     return res.status(200).json({
       success: true,
-      message: 'Approved guide listings retrieved successfully.',
+
+      message:
+        'Approved guide listings retrieved successfully.',
+
       data: {
-        count: approvedGuides.length,
-        guides: approvedGuides,
+        count:
+          filteredGuides.length,
+
+        guides:
+          filteredGuides,
       },
     });
   } catch (error) {
