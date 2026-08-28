@@ -7,6 +7,9 @@ import connectDatabase from './config/database.js';
 import {
   initializePublicRoomSocket,
 } from './services/publicRoomSocket.service.js';
+import {
+  startNotificationTriggerEngine,
+} from './services/notification-trigger.service.js';
 
 const port = Number(process.env.PORT) || 5000;
 
@@ -16,6 +19,8 @@ initializePublicRoomSocket(httpServer);
 
 async function startServer() {
   await connectDatabase();
+
+  startNotificationTriggerEngine();
 
   httpServer.listen(port, () => {
     console.log(`Ghuraghuri API is running on port ${port}.`);

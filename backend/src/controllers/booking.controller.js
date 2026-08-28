@@ -2,7 +2,11 @@ import mongoose from 'mongoose';
 
 import Booking from '../models/booking.model.js';
 import Hotel from '../models/hotel.model.js';
+import User from '../models/User.js';
 
+import {
+  sendNotificationEmail,
+} from '../services/notification.service.js';
 /*
  * ============================================================
  * RAFI FEATURE 3 - PREMIUM BOOKING PRICING
@@ -613,6 +617,30 @@ async function createBooking(
         paymentStatus:
           'unpaid',
       });
+      const vendor =
+        await User.findById(
+          hotel.vendorId
+        ).select(
+          'name email'
+        );
+
+      await sendNotificationEmail({
+        to: vendor?.email,
+        subject:
+          'New Hotel Booking Request - Ghuraghuri',
+        text:
+          `You received a new booking request for ${hotel.name}.`,
+        html: `
+          <h2>New Hotel Booking Request</h2>
+          <p>You received a new hotel booking request.</p>
+          <p><strong>Hotel:</strong> ${hotel.name}</p>
+          <p><strong>Check-in:</strong> ${parsedCheckInDate.toISOString().slice(0, 10)}</p>
+          <p><strong>Check-out:</strong> ${parsedCheckOutDate.toISOString().slice(0, 10)}</p>
+          <p><strong>Rooms:</strong> ${parsedNumberOfRooms}</p>
+          <p><strong>Guests:</strong> ${parsedNumberOfGuests}</p>
+          <p><strong>Total:</strong> BDT ${booking.totalPrice}</p>
+        `,
+      });
 
 
     /*
@@ -1109,6 +1137,29 @@ await booking.populate(
       'travelerId',
       'name email phone profileImageUrl'
     );
+    await sendNotificationEmail({
+      to: booking.travelerId?.email,
+      subject:
+        `Hotel Booking ${bookingStatus} - Ghuraghuri`,
+      text:
+        `Your booking for ${booking.hotelName} is now ${bookingStatus}.`,
+      html: `
+        <h2>Hotel Booking Update</h2>
+        <p>Your hotel booking status has changed.</p>
+        <p><strong>Hotel:</strong> ${booking.hotelName}</p>
+        <p><strong>Status:</strong> ${bookingStatus}</p>
+        <p><strong>Check-in:</strong> ${new Date(
+          booking.checkInDate
+        )
+          .toISOString()
+          .slice(0, 10)}</p>
+        <p><strong>Check-out:</strong> ${new Date(
+          booking.checkOutDate
+        )
+          .toISOString()
+          .slice(0, 10)}</p>
+      `,
+    });
 
 
     return res.status(200).json({
