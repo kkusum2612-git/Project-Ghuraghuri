@@ -6,6 +6,7 @@ import express from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import guideBookingRoutes from './routes/guideBooking.routes.js';
+import guideReviewRouter from './routes/guideReview.routes.js';
 
 import {
   errorHandler,
@@ -280,6 +281,10 @@ app.use(
 app.use(
   '/api/v1/guide-bookings',
   guideBookingRoutes
+);
+app.use(
+  '/api/v1/guide-reviews',
+  guideReviewRouter
 );
 // Shared administrator APIs.
 app.use(

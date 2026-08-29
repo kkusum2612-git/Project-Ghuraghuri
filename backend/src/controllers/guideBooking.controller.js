@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 import Guide from '../models/guide.model.js';
 import GuideBooking from '../models/guideBooking.model.js';
+import { sendNotificationEmail } from '../services/notification.service.js';
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -66,7 +67,7 @@ async function createGuideBooking(req, res, next) {
     ).populate({
       path: 'userId',
       select:
-        'role accountStatus approvalStatus',
+        'name email role accountStatus approvalStatus',
     });
 
     if (
@@ -193,6 +194,36 @@ async function createGuideBooking(req, res, next) {
           'pending',
         paymentStatus:
           'unpaid',
+      });
+      await sendNotificationEmail({
+        to: guide.userId.email,
+        subject: 'New Guide Booking Request - Ghuraghuri',
+        text:
+          `You received a new booking request for ${tourPackage.name}. ` +
+          `Tour date: ${selectedDateKey}. Group size: ${parsedGroupSize}.`,
+        html: `
+          <h2>New Guide Booking Request</h2>
+          <p>You received a new booking request.</p>
+          <p><strong>Tour:</strong> ${tourPackage.name}</p>
+          <p><strong>Date:</strong> ${selectedDateKey}</p>
+          <p><strong>Group Size:</strong> ${parsedGroupSize}</p>
+          <p><strong>Total:</strong> BDT ${totalPrice}</p>
+        `,
+      });
+
+      await sendNotificationEmail({
+        to: req.user.email,
+        subject: 'Guide Booking Request Submitted - Ghuraghuri',
+        text:
+          `Your booking request for ${tourPackage.name} was submitted successfully.`,
+        html: `
+          <h2>Booking Request Submitted</h2>
+          <p>Your guide booking request has been submitted successfully.</p>
+          <p><strong>Guide:</strong> ${guide.userId.name}</p>
+          <p><strong>Tour:</strong> ${tourPackage.name}</p>
+          <p><strong>Date:</strong> ${selectedDateKey}</p>
+          <p><strong>Total:</strong> BDT ${totalPrice}</p>
+        `,
       });
 
     return res.status(201).json({
@@ -390,6 +421,18 @@ async function updateGuideBookingStatus(
       'travelerId',
       'name email phone'
     );
+    await sendNotificationEmail({
+      to: booking.travelerId?.email,
+      subject: `Guide Booking ${bookingStatus} - Ghuraghuri`,
+      text:
+        `Your guide booking for ${booking.packageName} is now ${bookingStatus}.`,
+      html: `
+        <h2>Guide Booking Update</h2>
+        <p>Your guide booking status has changed.</p>
+        <p><strong>Tour:</strong> ${booking.packageName}</p>
+        <p><strong>Status:</strong> ${bookingStatus}</p>
+      `,
+    });
 
     return res.status(200).json({
       success: true,

@@ -23,6 +23,15 @@ function GuideWorkspace() {
       label: 'Bookings',
       to: '/guide/bookings',
     },
+    {
+      label: 'Reviews',
+      to: '/guide/reviews',
+    },
+
+    {
+      label: 'Analytics',
+      to: '/guide/analytics',
+    },
   ];
 
   function isActive(path) {
@@ -106,7 +115,7 @@ function GuideWorkspace() {
               Coming Later
             </p>
 
-            {['Earnings', 'Reviews', 'Analytics', 'Messages'].map((label) => (
+            {['Earnings', 'Messages'].map((label) => (
               <div
                 key={label}
                 className="cursor-not-allowed rounded-lg px-4 py-3 text-sm text-[#A0AAA5]"
