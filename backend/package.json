@@ -23,7 +23,6 @@
     "mongoose": "^9.7.4",
     "morgan": "^1.11.0",
     "multer": "^2.2.0",
-    "resend": "^6.24.0",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

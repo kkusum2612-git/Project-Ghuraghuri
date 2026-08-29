@@ -1,33 +1,48 @@
-import { Resend } from 'resend';
-
 /*
  * Central email sender for Ghuraghuri notifications.
  *
  * Feature controllers call this service instead of using
- * Resend directly.
+ * Brevo directly.
  */
 
-function getResendClient() {
-  const apiKey =
-    process.env.RESEND_API_KEY;
-
-  if (!apiKey) {
-    return null;
-  }
-
-  return new Resend(apiKey);
+function getBrevoApiKey() {
+  return (
+    process.env.BREVO_API_KEY ||
+    ''
+  ).trim();
 }
 
 function getFromEmail() {
   return (
-    process.env.RESEND_FROM_EMAIL ||
-    'Ghuraghuri <onboarding@resend.dev>'
-  );
+    process.env.BREVO_FROM_EMAIL ||
+    ''
+  ).trim();
+}
+
+function getFromName() {
+  return (
+    process.env.BREVO_FROM_NAME ||
+    'Ghuraghuri'
+  ).trim();
+}
+
+function buildRecipients(to) {
+  const recipients =
+    Array.isArray(to)
+      ? to
+      : [to];
+
+  return recipients
+    .filter(Boolean)
+    .map((email) => ({
+      email:
+        String(email).trim(),
+    }));
 }
 
 /*
- * Notification failures should not break bookings or other
- * core project features.
+ * Notification failures must not break bookings,
+ * status updates, or trip operations.
  */
 async function sendNotificationEmail({
   to,
@@ -35,55 +50,124 @@ async function sendNotificationEmail({
   text,
   html,
 }) {
-  if (!to) {
+  const recipients =
+    buildRecipients(to);
+
+  if (
+    recipients.length === 0
+  ) {
     return {
       sent: false,
-      reason: 'missing_recipient',
+      reason:
+        'missing_recipient',
     };
   }
 
-  const resend =
-    getResendClient();
+  const apiKey =
+    getBrevoApiKey();
 
-  if (!resend) {
+  const fromEmail =
+    getFromEmail();
+
+  if (
+    !apiKey ||
+    !fromEmail
+  ) {
     console.warn(
-      'Notification skipped: RESEND_API_KEY is not configured.'
+      'Notification skipped: Brevo is not configured.'
     );
 
     return {
       sent: false,
-      reason: 'not_configured',
+      reason:
+        'not_configured',
     };
   }
 
   try {
-    const result =
-      await resend.emails.send({
-        from: getFromEmail(),
-        to: Array.isArray(to)
-          ? to
-          : [to],
-        subject,
-        text,
-        html,
-      });
+    const response =
+      await fetch(
+        'https://api.brevo.com/v3/smtp/email',
+        {
+          method: 'POST',
 
-    if (result.error) {
+          headers: {
+            accept:
+              'application/json',
+
+            'content-type':
+              'application/json',
+
+            'api-key':
+              apiKey,
+          },
+
+          body:
+            JSON.stringify({
+              sender: {
+                name:
+                  getFromName(),
+
+                email:
+                  fromEmail,
+              },
+
+              to:
+                recipients,
+
+              subject,
+
+              textContent:
+                text || undefined,
+
+              htmlContent:
+                html || undefined,
+            }),
+        }
+      );
+
+    let result = {};
+
+    try {
+      result =
+        await response.json();
+    } catch {
+      result = {};
+    }
+
+    if (
+      !response.ok
+    ) {
       console.error(
         'Notification email failed:',
-        result.error
+        {
+          status:
+            response.status,
+
+          error:
+            result,
+        }
       );
 
       return {
         sent: false,
-        reason: 'provider_error',
-        error: result.error,
+        reason:
+          'provider_error',
+        status:
+          response.status,
+        error:
+          result,
       };
     }
 
     return {
       sent: true,
-      data: result.data,
+
+      data: {
+        messageId:
+          result.messageId ||
+          null,
+      },
     };
   } catch (error) {
     console.error(
@@ -93,7 +177,8 @@ async function sendNotificationEmail({
 
     return {
       sent: false,
-      reason: 'send_error',
+      reason:
+        'send_error',
       error,
     };
   }
