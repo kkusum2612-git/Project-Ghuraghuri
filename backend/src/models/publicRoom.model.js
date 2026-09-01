@@ -35,6 +35,31 @@ const publicRoomSchema = new mongoose.Schema(
       index: true,
     },
 
+        /*
+     * RAFI FEATURE 4 - OPTIONAL UNDERLYING TRIP
+     * --------------------------------------------------------
+     *
+     * Normal manually-created Public Rooms may leave this null.
+     *
+     * A Public Room created from an AI Travel Plan references
+     * the normal Trip that contains its Day -> Stop itinerary.
+     *
+     * Room members do NOT become Trip owners or collaborators.
+     */
+    tripId: {
+      type:
+        mongoose.Schema.Types.ObjectId,
+
+      ref:
+        'Trip',
+
+      default:
+        null,
+
+      index:
+        true,
+    },
+
     // A readable name for the public room.
     //
     // Example:

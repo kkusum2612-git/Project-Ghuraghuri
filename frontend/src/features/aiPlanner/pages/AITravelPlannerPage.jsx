@@ -8,7 +8,9 @@ import {
 } from 'react-router-dom';
 
 import {
+  createPublicRoomFromAiPlan,
   generateTravelPlan,
+  saveAiPlanAsTrip,
 } from '../api/aiPlannerApi';
 
 
@@ -17,45 +19,42 @@ import {
  * RAFI FEATURE 4 - AI TRAVEL PLANNER PAGE
  * ============================================================
  *
- * This page has two main states:
+ * The generated AI result starts as a neutral draft.
  *
- * 1. Planner form
- * 2. Generated result
+ * The Premium traveler can then explicitly choose:
+ *
+ * 1. Save as My Trip
+ * 2. Create Public Room
  *
  *
- * The traveler stays on the same /ai-planner page.
+ * SAVE AS MY TRIP
+ * ------------------------------------------------------------
  *
- * Before generation:
- *
- * /ai-planner
+ * AiTravelPlan
  *      ↓
- * planner form
- *
- *
- * After generation:
- *
- * /ai-planner
+ * Trip
  *      ↓
- * generated trip summary
+ * Day
  *      ↓
- * day-by-day itinerary
- *      ↓
- * real Ghuraghuri hotel recommendations
- *      ↓
- * trip budget summary
+ * Stop
  *
  *
- * The route map and conversion buttons will be connected in
- * the next Feature 4 blocks after this base result is verified.
+ * CREATE PUBLIC ROOM
+ * ------------------------------------------------------------
+ *
+ * AiTravelPlan
+ *      ↓
+ * reuse/create normal Trip
+ *      ↓
+ * PublicRoom
+ *
+ *
+ * Groq is NOT called again for either conversion.
+ *
+ * The AI map is intentionally not included right now.
  */
 
 
-/*
- * These are simple starting interests for the course demo.
- *
- * The backend accepts normal strings, so more interests can
- * easily be added later without changing the API structure.
- */
 const INTEREST_OPTIONS = [
   'Nature',
   'Food',
@@ -70,14 +69,6 @@ const INTEREST_OPTIONS = [
  * ------------------------------------------------------------
  * MONEY DISPLAY
  * ------------------------------------------------------------
- *
- * Example:
- *
- * 25000
- *
- * becomes:
- *
- * ৳25,000
  */
 function formatMoney(
   value
@@ -103,14 +94,6 @@ function formatMoney(
  * ------------------------------------------------------------
  * DATE DISPLAY
  * ------------------------------------------------------------
- *
- * MongoDB sends dates such as:
- *
- * 2026-08-28T00:00:00.000Z
- *
- * The traveler sees:
- *
- * 28 Aug 2026
  */
 function formatDate(
   value
@@ -153,9 +136,7 @@ function formatDate(
 
 
 /*
- * HotelDetailsPage expects dates in YYYY-MM-DD form when
- * receiving booking prefill information through navigation
- * state.
+ * HotelDetailsPage accepts date prefills using YYYY-MM-DD.
  */
 function toDateInputValue(
   value
@@ -173,30 +154,22 @@ function toDateInputValue(
 
 
 /*
- * ------------------------------------------------------------
- * ERROR MESSAGE
- * ------------------------------------------------------------
- *
- * The centralized backend error response normally places the
- * useful message here:
- *
- * error.response.data.message
- *
- * If that does not exist, we show a safe fallback message.
+ * Read the useful message returned by Express.
  */
-function getErrorMessage(
-  error
+function getApiErrorMessage(
+  error,
+  fallbackMessage
 ) {
   return (
     error?.response?.data?.message ||
-    'The AI Travel Planner could not generate a plan. Please try again.'
+    fallbackMessage
   );
 }
 
 
 /*
  * ------------------------------------------------------------
- * INITIAL FORM
+ * INITIAL PLANNER FORM
  * ------------------------------------------------------------
  */
 function createInitialForm() {
@@ -232,7 +205,7 @@ function AITravelPlannerPage() {
 
   /*
    * ==========================================================
-   * PLANNER FORM STATE
+   * PLANNER STATE
    * ==========================================================
    */
   const [
@@ -244,13 +217,6 @@ function AITravelPlannerPage() {
     );
 
 
-  /*
-   * The generated plan returned by our Express backend.
-   *
-   * null means:
-   *
-   * the traveler has not generated a plan yet.
-   */
   const [
     generatedPlan,
     setGeneratedPlan,
@@ -258,13 +224,6 @@ function AITravelPlannerPage() {
     useState(null);
 
 
-  /*
-   * While Groq is generating the plan, the Generate button is
-   * disabled.
-   *
-   * This prevents repeated clicks from creating several AI plans
-   * accidentally.
-   */
   const [
     isGenerating,
     setIsGenerating,
@@ -280,10 +239,98 @@ function AITravelPlannerPage() {
 
 
   /*
-   * Today's date is used only as a frontend convenience so the
-   * date picker does not encourage obviously old trip dates.
+   * ==========================================================
+   * SAVE AS MY TRIP STATE
+   * ==========================================================
+   */
+  const [
+    isSavingTrip,
+    setIsSavingTrip,
+  ] =
+    useState(false);
+
+
+  const [
+    savedTrip,
+    setSavedTrip,
+  ] =
+    useState(null);
+
+
+  const [
+    saveTripMessage,
+    setSaveTripMessage,
+  ] =
+    useState('');
+
+
+  const [
+    saveTripError,
+    setSaveTripError,
+  ] =
+    useState('');
+
+
+  const [
+    skippedPlaces,
+    setSkippedPlaces,
+  ] =
+    useState([]);
+
+
+  /*
+   * ==========================================================
+   * CREATE PUBLIC ROOM STATE
+   * ==========================================================
+   */
+  const [
+    isCreatingRoom,
+    setIsCreatingRoom,
+  ] =
+    useState(false);
+
+
+  const [
+    createdRoom,
+    setCreatedRoom,
+  ] =
+    useState(null);
+
+
+  const [
+    createRoomMessage,
+    setCreateRoomMessage,
+  ] =
+    useState('');
+
+
+  const [
+    createRoomError,
+    setCreateRoomError,
+  ] =
+    useState('');
+
+
+  const [
+    roomSkippedPlaces,
+    setRoomSkippedPlaces,
+  ] =
+    useState([]);
+
+
+  /*
+   * Do not allow the two conversion operations to run
+   * simultaneously from the page.
+   */
+  const conversionIsBusy =
+    isSavingTrip ||
+    isCreatingRoom;
+
+
+  /*
+   * Prevent the date picker from encouraging past dates.
    *
-   * Backend validation remains the real security boundary.
+   * Backend validation remains authoritative.
    */
   const minimumStartDate =
     useMemo(
@@ -323,7 +370,7 @@ function AITravelPlannerPage() {
 
   /*
    * ==========================================================
-   * NORMAL FORM INPUTS
+   * FORM INPUTS
    * ==========================================================
    */
   function handleInputChange(
@@ -348,10 +395,6 @@ function AITravelPlannerPage() {
     );
 
 
-    /*
-     * Remove an older API/form error as soon as the traveler
-     * starts correcting the form.
-     */
     if (
       errorMessage
     ) {
@@ -362,7 +405,7 @@ function AITravelPlannerPage() {
 
   /*
    * ==========================================================
-   * INTEREST CHECKBOXES
+   * INTEREST SELECTION
    * ==========================================================
    */
   function handleInterestChange(
@@ -415,13 +458,8 @@ function AITravelPlannerPage() {
 
   /*
    * ==========================================================
-   * FRONTEND FORM VALIDATION
+   * FRONTEND VALIDATION
    * ==========================================================
-   *
-   * This gives the traveler fast feedback.
-   *
-   * The backend independently validates all of these values
-   * again because frontend validation can be bypassed.
    */
   function validateForm() {
     if (
@@ -511,19 +549,8 @@ function AITravelPlannerPage() {
 
   /*
    * ==========================================================
-   * GENERATE THE REAL AI PLAN
+   * GENERATE AI PLAN
    * ==========================================================
-   *
-   * React sends only planner input.
-   *
-   * The backend then:
-   *
-   * - identifies the logged-in traveler,
-   * - checks PremiumMembership,
-   * - calls Groq,
-   * - searches real hotels,
-   * - checks availability,
-   * - saves the final AI draft in MongoDB.
    */
   async function handleGeneratePlan(
     event
@@ -604,9 +631,26 @@ function AITravelPlannerPage() {
 
 
       /*
-       * Move the browser back near the top so the traveler sees
-       * the generated summary immediately.
+       * Reset conversion state because this is a new AI plan.
        */
+      setSavedTrip(null);
+
+      setSaveTripMessage('');
+
+      setSaveTripError('');
+
+      setSkippedPlaces([]);
+
+
+      setCreatedRoom(null);
+
+      setCreateRoomMessage('');
+
+      setCreateRoomError('');
+
+      setRoomSkippedPlaces([]);
+
+
       window.scrollTo({
         top:
           0,
@@ -616,8 +660,9 @@ function AITravelPlannerPage() {
       });
     } catch (error) {
       setErrorMessage(
-        getErrorMessage(
-          error
+        getApiErrorMessage(
+          error,
+          'The AI Travel Planner could not generate a plan. Please try again.'
         )
       );
     } finally {
@@ -627,17 +672,11 @@ function AITravelPlannerPage() {
 
 
   /*
-   * ----------------------------------------------------------
-   * VIEW & BOOK
-   * ----------------------------------------------------------
+   * ==========================================================
+   * VIEW & BOOK HOTEL
+   * ==========================================================
    *
-   * This does NOT create a Booking.
-   *
-   * We only open Kusum's existing HotelDetailsPage and provide
-   * useful booking-form defaults.
-   *
-   * The traveler still chooses the real room and confirms the
-   * booking through the existing booking/payment flow.
+   * This does NOT automatically create a hotel booking.
    */
   function handleViewHotel(
     day
@@ -680,15 +719,324 @@ function AITravelPlannerPage() {
 
 
   /*
-   * Clear only the generated result.
+   * ==========================================================
+   * SAVE AS MY TRIP
+   * ==========================================================
    *
-   * We intentionally keep the existing form values so the user
-   * can make a small change and generate another version.
+   * No second Groq request occurs.
+   */
+  async function handleSaveAsTrip() {
+    if (
+      !generatedPlan?._id ||
+      conversionIsBusy
+    ) {
+      return;
+    }
+
+
+    /*
+     * If this browser already knows the converted Trip,
+     * clicking again opens it instead.
+     */
+    if (
+      savedTrip?._id
+    ) {
+      navigate(
+        `/trips/${savedTrip._id}/plan`
+      );
+
+      return;
+    }
+
+
+    setIsSavingTrip(true);
+
+    setSaveTripError('');
+
+    setSaveTripMessage('');
+
+    setSkippedPlaces([]);
+
+
+    try {
+      const result =
+        await saveAiPlanAsTrip(
+          generatedPlan._id
+        );
+
+
+      const trip =
+        result?.data?.trip;
+
+
+      if (
+        !trip?._id
+      ) {
+        throw new Error(
+          'Saved trip is missing from the response.'
+        );
+      }
+
+
+      setSavedTrip(
+        trip
+      );
+
+
+      const alreadyConverted =
+        Boolean(
+          result
+            ?.data
+            ?.wasAlreadyConverted
+        );
+
+
+      setSaveTripMessage(
+        alreadyConverted
+          ? 'This AI plan had already been saved. Your existing My Trip is ready to open.'
+          : 'AI travel plan saved successfully as a normal My Trip.'
+      );
+
+
+      setSkippedPlaces(
+        Array.isArray(
+          result
+            ?.data
+            ?.skippedPlaces
+        )
+          ? result
+              .data
+              .skippedPlaces
+          : []
+      );
+    } catch (error) {
+      setSaveTripError(
+        getApiErrorMessage(
+          error,
+          'The AI travel plan could not be saved as My Trip. Please try again.'
+        )
+      );
+    } finally {
+      setIsSavingTrip(false);
+    }
+  }
+
+
+  /*
+   * Open Farhan's normal editable Trip workspace.
+   */
+  function handleOpenSavedTrip() {
+    if (
+      !savedTrip?._id
+    ) {
+      return;
+    }
+
+
+    navigate(
+      `/trips/${savedTrip._id}/plan`
+    );
+  }
+
+
+  /*
+   * ==========================================================
+   * CREATE PUBLIC ROOM
+   * ==========================================================
+   *
+   * The SAME AI plan is used.
+   *
+   * Backend:
+   *
+   * AI Plan
+   *    ↓
+   * reuse/create normal Trip
+   *    ↓
+   * PublicRoom
+   *
+   * Existing join requests, membership and chat continue using
+   * the normal Public Room system.
+   */
+  async function handleCreatePublicRoom() {
+    if (
+      !generatedPlan?._id ||
+      conversionIsBusy
+    ) {
+      return;
+    }
+
+
+    /*
+     * If already created during this browser session, clicking
+     * again simply opens the room.
+     */
+    if (
+      createdRoom?._id
+    ) {
+      navigate(
+        `/event-rooms/${createdRoom._id}`
+      );
+
+      return;
+    }
+
+
+    setIsCreatingRoom(true);
+
+    setCreateRoomError('');
+
+    setCreateRoomMessage('');
+
+    setRoomSkippedPlaces([]);
+
+
+    try {
+      /*
+       * Empty roomData means the backend builds sensible room
+       * defaults from the already-reviewed AI plan:
+       *
+       * room name  <- trip title
+       * destination
+       * dates
+       * budget
+       * interests
+       * member limit
+       * description <- AI summary
+       */
+      const result =
+        await createPublicRoomFromAiPlan(
+          generatedPlan._id
+        );
+
+
+      const room =
+        result?.data?.room;
+
+
+      if (
+        !room?._id
+      ) {
+        throw new Error(
+          'Created Public Room is missing from the response.'
+        );
+      }
+
+
+      setCreatedRoom(
+        room
+      );
+
+
+      /*
+       * Creating a Public Room may also have created the
+       * underlying normal Trip.
+       *
+       * Keep that Trip available to the user without requiring
+       * another request.
+       */
+      const underlyingTrip =
+        result?.data?.trip;
+
+
+      if (
+        underlyingTrip?._id
+      ) {
+        setSavedTrip(
+          underlyingTrip
+        );
+      }
+
+
+      const alreadyConverted =
+        Boolean(
+          result
+            ?.data
+            ?.wasAlreadyConverted
+        );
+
+
+      setCreateRoomMessage(
+        alreadyConverted
+          ? 'This AI plan already has a Public Room. The existing room is ready to open.'
+          : 'Public Room created successfully from this AI travel plan.'
+      );
+
+
+      setRoomSkippedPlaces(
+        Array.isArray(
+          result
+            ?.data
+            ?.skippedPlaces
+        )
+          ? result
+              .data
+              .skippedPlaces
+          : []
+      );
+    } catch (error) {
+      setCreateRoomError(
+        getApiErrorMessage(
+          error,
+          'The Public Room could not be created from this AI plan. Please try again.'
+        )
+      );
+    } finally {
+      setIsCreatingRoom(false);
+    }
+  }
+
+
+  /*
+   * Open the existing Public Room details/member-management page.
+   */
+  function handleOpenPublicRoom() {
+    if (
+      !createdRoom?._id
+    ) {
+      return;
+    }
+
+
+    navigate(
+      `/event-rooms/${createdRoom._id}`
+    );
+  }
+
+
+  /*
+   * ==========================================================
+   * PLAN ANOTHER TRIP
+   * ==========================================================
    */
   function handlePlanAnotherTrip() {
+    if (
+      conversionIsBusy
+    ) {
+      return;
+    }
+
+
     setGeneratedPlan(null);
 
     setErrorMessage('');
+
+
+    setSavedTrip(null);
+
+    setSaveTripMessage('');
+
+    setSaveTripError('');
+
+    setSkippedPlaces([]);
+
+
+    setCreatedRoom(null);
+
+    setCreateRoomMessage('');
+
+    setCreateRoomError('');
+
+    setRoomSkippedPlaces([]);
 
 
     window.scrollTo({
@@ -703,7 +1051,7 @@ function AITravelPlannerPage() {
 
   /*
    * ==========================================================
-   * GENERATED RESULT STATE
+   * GENERATED RESULT
    * ==========================================================
    */
   if (
@@ -734,9 +1082,9 @@ function AITravelPlannerPage() {
 
     return (
       <div className="mx-auto w-full max-w-6xl">
-        {/* ----------------------------------------------------
+        {/* ====================================================
             RESULT HEADER
-           ---------------------------------------------------- */}
+           ==================================================== */}
         <section className="rounded-2xl border border-[#DCE5E0] bg-white p-6 shadow-sm lg:p-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
@@ -757,6 +1105,7 @@ function AITravelPlannerPage() {
                     .summary
                 }
               </p>
+
 
               <div className="mt-5 flex flex-wrap gap-2">
                 <span className="rounded-full bg-[#F3F6F4] px-3 py-1.5 text-sm font-medium text-[#425149]">
@@ -808,256 +1157,484 @@ function AITravelPlannerPage() {
               </div>
             </div>
 
+
             <button
               type="button"
               onClick={
                 handlePlanAnotherTrip
               }
-              className="shrink-0 rounded-lg border border-[#BFD9CD] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2]"
+              disabled={
+                conversionIsBusy
+              }
+              className="shrink-0 rounded-lg border border-[#BFD9CD] bg-white px-4 py-2.5 text-sm font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2] disabled:cursor-not-allowed disabled:opacity-60"
             >
               Plan Another Trip
             </button>
           </div>
+
+
+          {/* ==================================================
+              CONVERSION ACTIONS
+             ================================================== */}
+          <div className="mt-7 border-t border-[#E5ECE8] pt-6">
+            <h2 className="text-base font-bold text-[#17211D]">
+              What would you like to do with this plan?
+            </h2>
+
+            <p className="mt-1 text-sm leading-6 text-[#66756D]">
+              Keep it as your own editable trip or turn the same
+              itinerary into a Public Event Room.
+            </p>
+
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+              {/* ---------------- SAVE / OPEN TRIP ---------------- */}
+              {
+                savedTrip
+                  ? (
+                      <button
+                        type="button"
+                        onClick={
+                          handleOpenSavedTrip
+                        }
+                        disabled={
+                          conversionIsBusy
+                        }
+                        className="inline-flex items-center justify-center rounded-lg bg-[#0F6B4D] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0A523B] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Open My Trip
+                      </button>
+                    )
+                  : (
+                      <button
+                        type="button"
+                        onClick={
+                          handleSaveAsTrip
+                        }
+                        disabled={
+                          conversionIsBusy
+                        }
+                        className="inline-flex items-center justify-center rounded-lg bg-[#0F6B4D] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0A523B] disabled:cursor-not-allowed disabled:bg-[#8AA79A]"
+                      >
+                        {
+                          isSavingTrip
+                            ? 'Saving as My Trip...'
+                            : 'Save as My Trip'
+                        }
+                      </button>
+                    )
+              }
+
+
+              {/* ---------------- CREATE / OPEN ROOM ---------------- */}
+              {
+                createdRoom
+                  ? (
+                      <button
+                        type="button"
+                        onClick={
+                          handleOpenPublicRoom
+                        }
+                        disabled={
+                          conversionIsBusy
+                        }
+                        className="inline-flex items-center justify-center rounded-lg border border-[#0F6B4D] bg-white px-5 py-3 text-sm font-bold text-[#0F6B4D] transition hover:bg-[#EEF7F2] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Open Public Room
+                      </button>
+                    )
+                  : (
+                      <button
+                        type="button"
+                        onClick={
+                          handleCreatePublicRoom
+                        }
+                        disabled={
+                          conversionIsBusy
+                        }
+                        className="inline-flex items-center justify-center rounded-lg border border-[#0F6B4D] bg-white px-5 py-3 text-sm font-bold text-[#0F6B4D] transition hover:bg-[#EEF7F2] disabled:cursor-not-allowed disabled:border-[#9AB6A8] disabled:text-[#82958B]"
+                      >
+                        {
+                          isCreatingRoom
+                            ? 'Creating Public Room...'
+                            : 'Create Public Room'
+                        }
+                      </button>
+                    )
+              }
+            </div>
+
+
+            {/* ---------------- TRIP SUCCESS ---------------- */}
+            {
+              saveTripMessage
+                ? (
+                    <div
+                      className="mt-4 rounded-lg border border-[#BFDCCB] bg-[#EEF8F2] px-4 py-3 text-sm font-medium text-[#176244]"
+                      role="status"
+                    >
+                      {
+                        saveTripMessage
+                      }
+                    </div>
+                  )
+                : null
+            }
+
+
+            {/* ---------------- TRIP ERROR ---------------- */}
+            {
+              saveTripError
+                ? (
+                    <div
+                      className="mt-4 rounded-lg border border-[#E8C4BE] bg-[#FFF4F2] px-4 py-3 text-sm font-medium text-[#9B4036]"
+                      role="alert"
+                    >
+                      {
+                        saveTripError
+                      }
+                    </div>
+                  )
+                : null
+            }
+
+
+            {/* ---------------- ROOM SUCCESS ---------------- */}
+            {
+              createRoomMessage
+                ? (
+                    <div
+                      className="mt-4 rounded-lg border border-[#BFDCCB] bg-[#EEF8F2] px-4 py-3 text-sm font-medium text-[#176244]"
+                      role="status"
+                    >
+                      {
+                        createRoomMessage
+                      }
+                    </div>
+                  )
+                : null
+            }
+
+
+            {/* ---------------- ROOM ERROR ---------------- */}
+            {
+              createRoomError
+                ? (
+                    <div
+                      className="mt-4 rounded-lg border border-[#E8C4BE] bg-[#FFF4F2] px-4 py-3 text-sm font-medium text-[#9B4036]"
+                      role="alert"
+                    >
+                      {
+                        createRoomError
+                      }
+                    </div>
+                  )
+                : null
+            }
+
+
+            {/* ---------------- SKIPPED TRIP PLACES ---------------- */}
+            {
+              skippedPlaces.length >
+              0
+                ? (
+                    <div className="mt-4 rounded-lg border border-[#E9D9AD] bg-[#FFF9E9] px-4 py-3">
+                      <p className="text-sm font-bold text-[#735C22]">
+                        Some places could not be matched automatically
+                      </p>
+
+                      <p className="mt-1 text-xs leading-5 text-[#806D3A]">
+                        Your Trip was still saved. These places were
+                        not added as Stops because Ghuraghuri could
+                        not find trusted coordinates for them.
+                      </p>
+
+                      <ul className="mt-2 space-y-1 text-xs text-[#735C22]">
+                        {
+                          skippedPlaces.map(
+                            (
+                              item,
+                              index
+                            ) => (
+                              <li
+                                key={`${item.day}-${item.placeName}-${index}`}
+                              >
+                                Day {
+                                  item.day
+                                }:{' '}
+                                {
+                                  item.placeName
+                                }
+                              </li>
+                            )
+                          )
+                        }
+                      </ul>
+                    </div>
+                  )
+                : null
+            }
+
+
+            {/* ---------------- SKIPPED ROOM PLACES ---------------- */}
+            {
+              roomSkippedPlaces.length >
+              0
+                ? (
+                    <div className="mt-4 rounded-lg border border-[#E9D9AD] bg-[#FFF9E9] px-4 py-3">
+                      <p className="text-sm font-bold text-[#735C22]">
+                        Public Room created with a partial itinerary
+                      </p>
+
+                      <p className="mt-1 text-xs leading-5 text-[#806D3A]">
+                        The room was created, but these AI places
+                        could not be converted into normal Stops
+                        because trusted coordinates were unavailable.
+                      </p>
+
+                      <ul className="mt-2 space-y-1 text-xs text-[#735C22]">
+                        {
+                          roomSkippedPlaces.map(
+                            (
+                              item,
+                              index
+                            ) => (
+                              <li
+                                key={`room-${item.day}-${item.placeName}-${index}`}
+                              >
+                                Day {
+                                  item.day
+                                }:{' '}
+                                {
+                                  item.placeName
+                                }
+                              </li>
+                            )
+                          )
+                        }
+                      </ul>
+                    </div>
+                  )
+                : null
+            }
+          </div>
         </section>
 
 
-        {/* ----------------------------------------------------
-            SOURCE EXPLANATION
-           ----------------------------------------------------
-
-            This is useful both for the traveler and for viva.
-
-            It clearly explains which values come from AI and
-            which values come from Ghuraghuri itself.
-        */}
+        {/* ====================================================
+            TRUST BOUNDARY
+           ==================================================== */}
         <section className="mt-5 rounded-xl border border-[#DCE5E0] bg-[#F7FAF8] px-5 py-4">
           <p className="text-sm leading-6 text-[#536159]">
             <span className="font-bold text-[#17211D]">
               How this plan works:
             </span>{' '}
-            places and food/transport/activity costs are AI estimates.
-            Hotel names, prices and availability come from real
-            Ghuraghuri hotel data.
+            places and food/transport/activity costs are AI
+            estimates. Hotel names, prices and availability come
+            from real Ghuraghuri hotel data.
           </p>
         </section>
 
 
-        {/* ----------------------------------------------------
+        {/* ====================================================
             DAY-BY-DAY ITINERARY
-           ---------------------------------------------------- */}
-        <section className="mt-8">
-          <div className="mb-4">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0F6B4D]">
-              Your Itinerary
-            </p>
-
-            <h2 className="mt-1 text-2xl font-bold text-[#17211D]">
-              Day-by-day plan
-            </h2>
-          </div>
-
-          <div className="space-y-5">
-            {
-              generatedPlan
-                .days
-                .map(
-                  (
+           ==================================================== */}
+        <div className="mt-6 space-y-6">
+          {
+            generatedPlan
+              .days
+              .map(
+                (
+                  day
+                ) => {
+                  const hasHotel =
                     day
-                  ) => (
-                    <article
+                      .accommodationType ===
+                      'hotel' &&
+                    day.hotel;
+
+
+                  return (
+                    <section
                       key={
                         day.day
                       }
                       className="overflow-hidden rounded-2xl border border-[#DCE5E0] bg-white shadow-sm"
                     >
-                      {/* Day heading */}
-                      <div className="border-b border-[#E5ECE8] bg-[#F7FAF8] px-6 py-5">
+                      {/* DAY HEADER */}
+                      <div className="border-b border-[#E5ECE8] bg-[#F8FBF9] px-6 py-5">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <div>
-                            <p className="text-sm font-bold text-[#0F6B4D]">
-                              Day{' '}
-                              {
+                            <p className="text-xs font-bold uppercase tracking-wide text-[#0F6B4D]">
+                              Day {
                                 day.day
                               }
                             </p>
 
-                            <h3 className="mt-1 text-xl font-bold text-[#17211D]">
+                            <h2 className="mt-1 text-xl font-bold text-[#17211D]">
                               {
-                                day.startArea
+                                formatDate(
+                                  day.date
+                                )
                               }
-                              {' → '}
-                              {
-                                day.endArea
-                              }
-                            </h3>
+                            </h2>
                           </div>
 
-                          <p className="text-sm font-semibold text-[#66756D]">
+                          <p className="text-sm font-semibold text-[#536159]">
                             {
-                              formatDate(
-                                day.date
-                              )
+                              day.startArea
+                            }
+                            {' → '}
+                            {
+                              day.endArea
                             }
                           </p>
                         </div>
                       </div>
 
 
-                      <div className="grid gap-6 p-6 lg:grid-cols-[1fr_0.9fr]">
-                        {/* ---------------- PLACES ---------------- */}
+                      <div className="grid gap-6 p-6 lg:grid-cols-[1.3fr_0.9fr]">
+                        {/* --------------------------------------
+                            PLACES
+                           -------------------------------------- */}
                         <div>
-                          <h4 className="text-sm font-bold uppercase tracking-wide text-[#536159]">
+                          <h3 className="text-sm font-bold uppercase tracking-wide text-[#526158]">
                             Places to visit
-                          </h4>
-
-                          <ol className="mt-4 space-y-3">
-                            {
-                              day.places.map(
-                                (
-                                  place,
-                                  index
-                                ) => (
-                                  <li
-                                    key={`${day.day}-${place}-${index}`}
-                                    className="flex items-start gap-3"
-                                  >
-                                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#DCEFE4] text-xs font-bold text-[#0F6B4D]">
-                                      {
-                                        index +
-                                        1
-                                      }
-                                    </span>
-
-                                    <span className="pt-0.5 text-sm leading-6 text-[#334139]">
-                                      {
-                                        place
-                                      }
-                                    </span>
-                                  </li>
-                                )
-                              )
-                            }
-                          </ol>
-
+                          </h3>
 
                           {
-                            day.requiresStay &&
-                            day.stayArea
+                            Array.isArray(
+                              day.places
+                            ) &&
+                            day.places.length >
+                              0
                               ? (
-                                  <div className="mt-5 rounded-lg bg-[#F3F6F4] px-4 py-3">
-                                    <p className="text-xs font-bold uppercase tracking-wide text-[#66756D]">
-                                      Overnight area
-                                    </p>
+                                  <ol className="mt-4 space-y-3">
+                                    {
+                                      day
+                                        .places
+                                        .map(
+                                          (
+                                            place,
+                                            index
+                                          ) => (
+                                            <li
+                                              key={`${day.day}-${place}-${index}`}
+                                              className="flex items-start gap-3"
+                                            >
+                                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E7F3EC] text-xs font-bold text-[#0F6B4D]">
+                                                {
+                                                  index +
+                                                  1
+                                                }
+                                              </span>
 
-                                    <p className="mt-1 text-sm font-semibold text-[#17211D]">
-                                      {
-                                        day.stayArea
-                                      }
-                                    </p>
-                                  </div>
+                                              <span className="pt-1 text-sm font-medium text-[#334139]">
+                                                {
+                                                  place
+                                                }
+                                              </span>
+                                            </li>
+                                          )
+                                        )
+                                    }
+                                  </ol>
                                 )
-                              : null
+                              : (
+                                  <p className="mt-3 text-sm text-[#7A8881]">
+                                    No places were suggested for this day.
+                                  </p>
+                                )
                           }
                         </div>
 
 
-                        {/* ------------- ACCOMMODATION ------------ */}
+                        {/* --------------------------------------
+                            ACCOMMODATION
+                           -------------------------------------- */}
                         <div>
-                          <h4 className="text-sm font-bold uppercase tracking-wide text-[#536159]">
+                          <h3 className="text-sm font-bold uppercase tracking-wide text-[#526158]">
                             Accommodation
-                          </h4>
+                          </h3>
 
 
                           {
-                            day
-                              .accommodationType ===
-                              'hotel' &&
-                            day.hotel
+                            !day.requiresStay
                               ? (
-                                  <div className="mt-4 overflow-hidden rounded-xl border border-[#DCE5E0]">
-                                    {
-                                      day
-                                        .hotel
-                                        .photo
-                                        ? (
-                                            <img
-                                              src={
-                                                day
-                                                  .hotel
-                                                  .photo
-                                              }
-                                              alt={
-                                                day
-                                                  .hotel
-                                                  .name
-                                              }
-                                              className="h-36 w-full object-cover"
-                                            />
-                                          )
-                                        : (
-                                            <div className="flex h-28 items-center justify-center bg-[#EEF7F2] px-4 text-center text-sm font-semibold text-[#66756D]">
-                                              Ghuraghuri Hotel
-                                            </div>
-                                          )
-                                    }
+                                  <div className="mt-4 rounded-xl border border-[#DCE5E0] bg-[#F7FAF8] p-4">
+                                    <p className="font-bold text-[#334139]">
+                                      No overnight stay required
+                                    </p>
 
-                                    <div className="p-4">
-                                      <div className="inline-flex rounded-full bg-[#E7F4EC] px-2.5 py-1 text-xs font-bold text-[#0F6B4D]">
-                                        Real Ghuraghuri Hotel
-                                      </div>
-
-                                      <h5 className="mt-3 text-lg font-bold text-[#17211D]">
-                                        {
-                                          day
-                                            .hotel
-                                            .name
-                                        }
-                                      </h5>
-
-                                      <p className="mt-1 text-sm text-[#66756D]">
-                                        {
-                                          day
-                                            .hotel
-                                            .city
-                                        }
-                                      </p>
-
+                                    <p className="mt-1 text-sm leading-6 text-[#66756D]">
+                                      This day does not require an
+                                      accommodation recommendation.
+                                    </p>
+                                  </div>
+                                )
+                              : hasHotel
+                                ? (
+                                    <div className="mt-4 overflow-hidden rounded-xl border border-[#CFE0D7] bg-[#F8FCFA]">
                                       {
                                         day
                                           .hotel
-                                          .address
+                                          .photo
                                           ? (
-                                              <p className="mt-1 text-xs leading-5 text-[#7A8881]">
-                                                {
+                                              <img
+                                                src={
                                                   day
                                                     .hotel
-                                                    .address
+                                                    .photo
                                                 }
-                                              </p>
+                                                alt={
+                                                  day
+                                                    .hotel
+                                                    .hotelName
+                                                }
+                                                className="h-40 w-full object-cover"
+                                              />
                                             )
                                           : null
                                       }
 
-                                      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                                        <div>
-                                          <p className="text-xs font-medium text-[#66756D]">
-                                            From
-                                          </p>
+                                      <div className="p-4">
+                                        <p className="text-xs font-bold uppercase tracking-wide text-[#0F6B4D]">
+                                          Ghuraghuri Hotel
+                                        </p>
 
-                                          <p className="text-lg font-bold text-[#0F6B4D]">
-                                            {
-                                              formatMoney(
-                                                day
-                                                  .hotel
-                                                  .startingPrice
+                                        <h4 className="mt-1 text-lg font-bold text-[#17211D]">
+                                          {
+                                            day
+                                              .hotel
+                                              .hotelName
+                                          }
+                                        </h4>
+
+                                        {
+                                          day
+                                            .hotel
+                                            .location
+                                            ? (
+                                                <p className="mt-1 text-sm text-[#66756D]">
+                                                  {
+                                                    day
+                                                      .hotel
+                                                      .location
+                                                  }
+                                                </p>
                                               )
-                                            }
-                                            <span className="text-xs font-medium text-[#66756D]">
-                                              {' '}
-                                              / room / night
-                                            </span>
-                                          </p>
-                                        </div>
+                                            : null
+                                        }
+
+                                        <p className="mt-3 text-sm font-bold text-[#0F6B4D]">
+                                          {
+                                            formatMoney(
+                                              day
+                                                .accommodationEstimate
+                                            )
+                                          }{' '}
+                                          accommodation estimate
+                                        </p>
 
                                         <button
                                           type="button"
@@ -1066,69 +1643,50 @@ function AITravelPlannerPage() {
                                               day
                                             )
                                           }
-                                          className="rounded-lg bg-[#0F6B4D] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0A523B]"
+                                          className="mt-4 rounded-lg border border-[#0F6B4D] bg-white px-4 py-2 text-sm font-bold text-[#0F6B4D] transition hover:bg-[#EEF7F2]"
                                         >
                                           View & Book
                                         </button>
                                       </div>
                                     </div>
-                                  </div>
-                                )
-                              : null
-                          }
+                                  )
+                                : (
+                                    <div className="mt-4 rounded-xl border border-[#E4DDC8] bg-[#FFFDF5] p-4">
+                                      <p className="font-bold text-[#554A2F]">
+                                        Camping / Self-arranged stay
+                                      </p>
 
+                                      <p className="mt-1 text-sm leading-6 text-[#74694E]">
+                                        No suitable registered
+                                        Ghuraghuri hotel was found for
+                                        this overnight area.
+                                      </p>
 
-                          {
-                            day
-                              .accommodationType ===
-                              'self-arranged'
-                              ? (
-                                  <div className="mt-4 rounded-xl border border-dashed border-[#C9D5CF] bg-[#F7FAF8] p-5">
-                                    <p className="font-bold text-[#17211D]">
-                                      Camping / Self-arranged stay
-                                    </p>
-
-                                    <p className="mt-2 text-sm leading-6 text-[#66756D]">
-                                      No suitable Ghuraghuri hotel was found
-                                      for this overnight area.
-                                    </p>
-
-                                    <p className="mt-3 text-sm font-semibold text-[#536159]">
-                                      Accommodation included in estimate:{' '}
-                                      <span className="text-[#0F6B4D]">
-                                        BDT 0
-                                      </span>
-                                    </p>
-                                  </div>
-                                )
-                              : null
-                          }
-
-
-                          {
-                            day
-                              .accommodationType ===
-                              'none'
-                              ? (
-                                  <div className="mt-4 rounded-xl bg-[#F7FAF8] p-5">
-                                    <p className="font-semibold text-[#536159]">
-                                      No overnight accommodation is required
-                                      for this day.
-                                    </p>
-                                  </div>
-                                )
-                              : null
+                                      <p className="mt-3 text-sm font-semibold text-[#554A2F]">
+                                        Accommodation included in
+                                        estimate:{' '}
+                                        {
+                                          formatMoney(
+                                            day
+                                              .accommodationEstimate
+                                          )
+                                        }
+                                      </p>
+                                    </div>
+                                  )
                           }
                         </div>
                       </div>
 
 
-                      {/* ---------------- COSTS ---------------- */}
-                      <div className="border-t border-[#E5ECE8] bg-[#FBFCFB] px-6 py-5">
+                      {/* ----------------------------------------
+                          DAILY COSTS
+                         ---------------------------------------- */}
+                      <div className="border-t border-[#E5ECE8] bg-[#FCFDFC] px-6 py-5">
                         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                           <div>
-                            <p className="text-xs font-medium text-[#7A8881]">
-                              Food estimate
+                            <p className="text-xs text-[#7A8881]">
+                              Food
                             </p>
 
                             <p className="mt-1 font-bold text-[#334139]">
@@ -1141,8 +1699,8 @@ function AITravelPlannerPage() {
                           </div>
 
                           <div>
-                            <p className="text-xs font-medium text-[#7A8881]">
-                              Transport estimate
+                            <p className="text-xs text-[#7A8881]">
+                              Transport
                             </p>
 
                             <p className="mt-1 font-bold text-[#334139]">
@@ -1156,8 +1714,8 @@ function AITravelPlannerPage() {
                           </div>
 
                           <div>
-                            <p className="text-xs font-medium text-[#7A8881]">
-                              Activities estimate
+                            <p className="text-xs text-[#7A8881]">
+                              Activities
                             </p>
 
                             <p className="mt-1 font-bold text-[#334139]">
@@ -1171,7 +1729,7 @@ function AITravelPlannerPage() {
                           </div>
 
                           <div>
-                            <p className="text-xs font-medium text-[#7A8881]">
+                            <p className="text-xs text-[#7A8881]">
                               Accommodation
                             </p>
 
@@ -1185,12 +1743,12 @@ function AITravelPlannerPage() {
                             </p>
                           </div>
 
-                          <div className="rounded-lg bg-[#EAF5EF] px-3 py-2">
-                            <p className="text-xs font-medium text-[#567067]">
-                              Day total
+                          <div>
+                            <p className="text-xs font-semibold text-[#0F6B4D]">
+                              Day Total
                             </p>
 
-                            <p className="mt-1 font-bold text-[#0F6B4D]">
+                            <p className="mt-1 text-lg font-bold text-[#0F6B4D]">
                               {
                                 formatMoney(
                                   day
@@ -1201,113 +1759,107 @@ function AITravelPlannerPage() {
                           </div>
                         </div>
                       </div>
-                    </article>
-                  )
-                )
-            }
-          </div>
-        </section>
+                    </section>
+                  );
+                }
+              )
+          }
+        </div>
 
 
-        {/* ----------------------------------------------------
+        {/* ====================================================
             BUDGET SUMMARY
-           ---------------------------------------------------- */}
-        <section className="mt-8 rounded-2xl border border-[#DCE5E0] bg-white p-6 shadow-sm lg:p-7">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#0F6B4D]">
-                Budget Summary
+           ==================================================== */}
+        <section className="mt-6 rounded-2xl border border-[#DCE5E0] bg-white p-6 shadow-sm">
+          <h2 className="text-xl font-bold text-[#17211D]">
+            Budget Summary
+          </h2>
+
+          <p className="mt-2 text-sm leading-6 text-[#66756D]">
+            Hotel accommodation uses Ghuraghuri data. Food,
+            transport and activity values are AI estimates.
+          </p>
+
+
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <div className="rounded-xl bg-[#F7FAF8] px-5 py-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-[#66756D]">
+                Trip Budget
               </p>
 
-              <h2 className="mt-1 text-2xl font-bold text-[#17211D]">
-                Estimated trip cost
-              </h2>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-[#66756D]">
-                AI-generated food, transport and activity costs are
-                estimates. Hotel accommodation uses real Ghuraghuri
-                pricing from the matched available hotel.
+              <p className="mt-1 text-xl font-bold text-[#17211D]">
+                {
+                  formatMoney(
+                    budget
+                  )
+                }
               </p>
             </div>
 
-            <div className="grid min-w-0 gap-3 sm:grid-cols-3">
-              <div className="rounded-xl bg-[#F7FAF8] px-5 py-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-[#66756D]">
-                  Your Budget
-                </p>
 
-                <p className="mt-1 text-xl font-bold text-[#17211D]">
-                  {
-                    formatMoney(
-                      budget
-                    )
-                  }
-                </p>
-              </div>
+            <div className="rounded-xl bg-[#F7FAF8] px-5 py-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-[#66756D]">
+                Estimated Cost
+              </p>
 
-              <div className="rounded-xl bg-[#F7FAF8] px-5 py-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-[#66756D]">
-                  Estimated Cost
-                </p>
+              <p className="mt-1 text-xl font-bold text-[#17211D]">
+                {
+                  formatMoney(
+                    estimatedTotal
+                  )
+                }
+              </p>
+            </div>
 
-                <p className="mt-1 text-xl font-bold text-[#17211D]">
-                  {
-                    formatMoney(
-                      estimatedTotal
-                    )
-                  }
-                </p>
-              </div>
 
-              <div
+            <div
+              className={[
+                'rounded-xl px-5 py-4',
+
+                isOverBudget
+                  ? 'bg-[#FFF2F0]'
+                  : 'bg-[#EAF5EF]',
+              ].join(
+                ' '
+              )}
+            >
+              <p
                 className={[
-                  'rounded-xl px-5 py-4',
+                  'text-xs font-medium uppercase tracking-wide',
 
                   isOverBudget
-                    ? 'bg-[#FFF2F0]'
-                    : 'bg-[#EAF5EF]',
+                    ? 'text-[#A94A3F]'
+                    : 'text-[#4B725F]',
                 ].join(
                   ' '
                 )}
               >
-                <p
-                  className={[
-                    'text-xs font-medium uppercase tracking-wide',
+                {
+                  isOverBudget
+                    ? 'Over Budget By'
+                    : 'Estimated Remaining'
+                }
+              </p>
 
-                    isOverBudget
-                      ? 'text-[#A94A3F]'
-                      : 'text-[#4B725F]',
-                  ].join(
-                    ' '
-                  )}
-                >
-                  {
-                    isOverBudget
-                      ? 'Over Budget By'
-                      : 'Estimated Remaining'
-                  }
-                </p>
+              <p
+                className={[
+                  'mt-1 text-xl font-bold',
 
-                <p
-                  className={[
-                    'mt-1 text-xl font-bold',
-
-                    isOverBudget
-                      ? 'text-[#B14337]'
-                      : 'text-[#0F6B4D]',
-                  ].join(
-                    ' '
-                  )}
-                >
-                  {
-                    formatMoney(
-                      Math.abs(
-                        budgetDifference
-                      )
+                  isOverBudget
+                    ? 'text-[#B14337]'
+                    : 'text-[#0F6B4D]',
+                ].join(
+                  ' '
+                )}
+              >
+                {
+                  formatMoney(
+                    Math.abs(
+                      budgetDifference
                     )
-                  }
-                </p>
-              </div>
+                  )
+                }
+              </p>
             </div>
           </div>
         </section>
@@ -1318,27 +1870,25 @@ function AITravelPlannerPage() {
 
   /*
    * ==========================================================
-   * PLANNER FORM STATE
+   * PLANNER FORM
    * ==========================================================
    */
   return (
     <div className="mx-auto w-full max-w-5xl">
-      {/* ------------------------------------------------------
-          PAGE INTRODUCTION
-         ------------------------------------------------------ */}
       <div className="mb-7">
-        <div className="inline-flex rounded-full bg-[#DCEFE4] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0F6B4D]">
+        <div className="mb-3 inline-flex rounded-full bg-[#EEF7F2] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0F6B4D]">
           Premium AI Planner
         </div>
 
-        <h1 className="mt-3 text-3xl font-bold text-[#17211D]">
-          AI Travel Planner
+        <h1 className="text-3xl font-bold text-[#17211D]">
+          Plan your trip with AI
         </h1>
 
-        <p className="mt-2 max-w-2xl text-base leading-7 text-[#66756D]">
-          Tell Ghuraghuri where you want to go, your budget and
-          interests. Our AI will create a day-by-day draft and
-          match overnight stays with real Ghuraghuri hotels.
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-[#66756D]">
+          Tell Ghuraghuri where you want to travel, your budget
+          and preferences. Groq will create the itinerary, while
+          Ghuraghuri adds trusted hotel information from the
+          application.
         </p>
       </div>
 
@@ -1369,13 +1919,13 @@ function AITravelPlannerPage() {
               onChange={
                 handleInputChange
               }
-              placeholder="e.g. Dhaka"
-              maxLength={120}
+              placeholder="Dhaka"
+              maxLength="120"
               className="w-full rounded-lg border border-[#CCD8D2] bg-white px-4 py-3 text-sm text-[#17211D] outline-none transition placeholder:text-[#98A49E] focus:border-[#0F6B4D] focus:ring-2 focus:ring-[#DCEFE4]"
             />
 
             <p className="mt-1.5 text-xs text-[#7A8881]">
-              Where will your trip begin?
+              Where the trip will begin.
             </p>
           </div>
 
@@ -1399,13 +1949,13 @@ function AITravelPlannerPage() {
               onChange={
                 handleInputChange
               }
-              placeholder="e.g. Cox's Bazar"
-              maxLength={120}
+              placeholder="Cox's Bazar"
+              maxLength="120"
               className="w-full rounded-lg border border-[#CCD8D2] bg-white px-4 py-3 text-sm text-[#17211D] outline-none transition placeholder:text-[#98A49E] focus:border-[#0F6B4D] focus:ring-2 focus:ring-[#DCEFE4]"
             />
 
             <p className="mt-1.5 text-xs text-[#7A8881]">
-              Main destination for the generated trip.
+              Main destination for the generated itinerary.
             </p>
           </div>
 
@@ -1436,7 +1986,7 @@ function AITravelPlannerPage() {
             />
 
             <p className="mt-1.5 text-xs text-[#7A8881]">
-              Used to create real day dates and hotel stay dates.
+              Used for itinerary dates and hotel availability.
             </p>
           </div>
 
@@ -1450,27 +2000,25 @@ function AITravelPlannerPage() {
               Duration
             </label>
 
-            <div className="relative">
-              <input
-                id="duration"
-                name="duration"
-                type="number"
-                min="1"
-                max="14"
-                step="1"
-                value={
-                  formData.duration
-                }
-                onChange={
-                  handleInputChange
-                }
-                className="w-full rounded-lg border border-[#CCD8D2] bg-white px-4 py-3 pr-16 text-sm text-[#17211D] outline-none transition focus:border-[#0F6B4D] focus:ring-2 focus:ring-[#DCEFE4]"
-              />
+            <input
+              id="duration"
+              name="duration"
+              type="number"
+              min="1"
+              max="14"
+              step="1"
+              value={
+                formData.duration
+              }
+              onChange={
+                handleInputChange
+              }
+              className="w-full rounded-lg border border-[#CCD8D2] bg-white px-4 py-3 text-sm text-[#17211D] outline-none transition focus:border-[#0F6B4D] focus:ring-2 focus:ring-[#DCEFE4]"
+            />
 
-              <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-[#7A8881]">
-                days
-              </span>
-            </div>
+            <p className="mt-1.5 text-xs text-[#7A8881]">
+              Between 1 and 14 days.
+            </p>
           </div>
 
 
@@ -1537,8 +2085,8 @@ function AITravelPlannerPage() {
             </div>
 
             <p className="mt-1.5 text-xs text-[#7A8881]">
-              Groq will try to keep the draft reasonably near this
-              amount.
+              Groq will try to keep the draft reasonably near
+              this amount.
             </p>
           </div>
         </div>
@@ -1566,6 +2114,7 @@ function AITravelPlannerPage() {
               selected
             </p>
           </div>
+
 
           <div className="mt-4 flex flex-wrap gap-3">
             {
@@ -1657,8 +2206,8 @@ function AITravelPlannerPage() {
 
           <p className="mt-3 text-xs leading-5 text-[#7A8881]">
             AI generation can take a few seconds. Ghuraghuri will
-            also check real hotel information before displaying the
-            result.
+            also check real hotel information before displaying
+            the result.
           </p>
         </div>
       </form>
