@@ -3,8 +3,10 @@ import {
 } from 'express';
 
 import {
+  createPublicRoomFromTravelPlan,
   generateTravelPlan,
   getTravelPlanById,
+  saveTravelPlanAsTrip,
 } from '../controllers/aiTravelPlan.controller.js';
 
 import {
@@ -18,43 +20,20 @@ import {
  * RAFI FEATURE 4 - AI TRAVEL PLANNER ROUTES
  * ============================================================
  *
- * app.js will mount this router at:
+ * app.js mounts this router at:
  *
- *   /api/v1/ai/travel-plan
+ * /api/v1/ai/travel-plan
  *
+ * Every route requires an authenticated traveler.
  *
- * Security has two layers:
- *
- * 1. This route verifies authentication and traveler role.
- * 2. The controller independently verifies PremiumMembership.
- *
- * This means a normal traveler cannot bypass the frontend
- * Premium lock by manually calling the API.
+ * The controller separately checks active Premium membership.
  */
 const router =
   Router();
 
 
 /*
- * ------------------------------------------------------------
- * POST /api/v1/ai/travel-plan
- * ------------------------------------------------------------
- *
- * Generates a new AI travel plan.
- *
- * Flow:
- *
- * authenticated traveler
- *        ↓
- * PremiumMembership check
- *        ↓
- * input validation
- *        ↓
- * Groq
- *        ↓
- * real hotel enrichment
- *        ↓
- * AiTravelPlan saved in MongoDB
+ * Generate a new neutral AI plan.
  */
 router.post(
   '/',
@@ -70,12 +49,40 @@ router.post(
 
 
 /*
- * ------------------------------------------------------------
- * GET /api/v1/ai/travel-plan/:planId
- * ------------------------------------------------------------
- *
- * Reloads one previously generated plan belonging to the
- * current Premium traveler.
+ * Convert the AI plan into a normal My Trip.
+ */
+router.post(
+  '/:planId/save-trip',
+
+  authenticateUser,
+
+  authorizeRoles(
+    'traveler'
+  ),
+
+  saveTravelPlanAsTrip
+);
+
+
+/*
+ * Convert the SAME AI plan into an underlying Trip +
+ * Public Room wrapper.
+ */
+router.post(
+  '/:planId/create-public-room',
+
+  authenticateUser,
+
+  authorizeRoles(
+    'traveler'
+  ),
+
+  createPublicRoomFromTravelPlan
+);
+
+
+/*
+ * Reload one saved AI plan.
  */
 router.get(
   '/:planId',

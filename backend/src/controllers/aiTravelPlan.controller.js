@@ -14,6 +14,14 @@ import {
   getPremiumMembershipByTravelerId,
 } from '../services/premium-membership.service.js';
 
+import {
+  convertAiPlanToTrip,
+} from '../services/ai-trip-conversion.service.js';
+
+import {
+  convertAiPlanToPublicRoom,
+} from '../services/ai-public-room-conversion.service.js';
+
 
 /*
  * ============================================================
@@ -833,8 +841,267 @@ async function getTravelPlanById(
   }
 }
 
+/*
+ * ============================================================
+ * POST /api/v1/ai/travel-plan/:planId/save-trip
+ * ============================================================
+ *
+ * Converts one saved AI draft into a normal Ghuraghuri Trip.
+ *
+ * Important:
+ *
+ * - the traveler must still be Premium;
+ * - the AI plan must belong to the logged-in traveler;
+ * - Groq is NOT called again;
+ * - the existing Trip -> Day -> Stop structure is reused;
+ * - convertedTripId prevents normal duplicate conversion.
+ */
+async function saveTravelPlanAsTrip(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      planId,
+    } =
+      req.params;
+
+
+    /*
+     * Validate the MongoDB ID before querying.
+     */
+    if (
+      !mongoose.isValidObjectId(
+        planId
+      )
+    ) {
+      throw createHttpError(
+        'AI travel plan ID is invalid.',
+        400
+      );
+    }
+
+
+    /*
+     * Ownership always comes from authentication.
+     *
+     * The frontend never tells the backend which traveler owns
+     * the new Trip.
+     */
+    const travelerId =
+      req.user._id;
+
+
+    /*
+     * Save as My Trip remains part of the Premium AI Planner
+     * feature.
+     */
+    await requirePremiumMembership(
+      travelerId
+    );
+
+
+    /*
+     * Search using BOTH the plan ID and traveler ID.
+     *
+     * Therefore one traveler cannot convert another traveler's
+     * AI plan by copying its MongoDB ID.
+     */
+    const aiTravelPlan =
+      await AiTravelPlan.findOne({
+        _id:
+          planId,
+
+        travelerId,
+      });
+
+
+    if (!aiTravelPlan) {
+      throw createHttpError(
+        'AI travel plan not found.',
+        404
+      );
+    }
+
+
+    /*
+     * The conversion service handles:
+     *
+     * AiTravelPlan
+     *      ↓
+     * Trip
+     *      ↓
+     * Day
+     *      ↓
+     * Stop
+     *
+     * It also checks convertedTripId before creating another
+     * copy.
+     */
+    const {
+      trip,
+      wasAlreadyConverted,
+      skippedPlaces,
+    } =
+      await convertAiPlanToTrip({
+        aiTravelPlan,
+
+        travelerId,
+      });
+
+
+    /*
+     * 201 = a new Trip was created.
+     *
+     * 200 = this AI plan had already been converted, so the
+     * existing Trip was returned instead.
+     */
+    return res
+      .status(
+        wasAlreadyConverted
+          ? 200
+          : 201
+      )
+      .json({
+        success:
+          true,
+
+        message:
+          wasAlreadyConverted
+            ? 'This AI travel plan was already saved as a My Trip.'
+            : 'AI travel plan saved as My Trip successfully.',
+
+        data: {
+          trip,
+
+          wasAlreadyConverted,
+
+          /*
+           * A place is included here only if Nominatim could not
+           * safely resolve it to coordinates.
+           *
+           * We never invent fake coordinates.
+           */
+          skippedPlaces,
+        },
+      });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+
+/*
+ * ============================================================
+ * POST /api/v1/ai/travel-plan/:planId/create-public-room
+ * ============================================================
+ *
+ * Converts the SAME saved AI plan into:
+ *
+ * normal Trip
+ *      ↓
+ * Public Room
+ *
+ * Groq is not called again.
+ */
+async function createPublicRoomFromTravelPlan(
+  req,
+  res,
+  next
+) {
+  try {
+    const {
+      planId,
+    } =
+      req.params;
+
+
+    if (
+      !mongoose.isValidObjectId(
+        planId
+      )
+    ) {
+      throw createHttpError(
+        'AI travel plan ID is invalid.',
+        400
+      );
+    }
+
+
+    const travelerId =
+      req.user._id;
+
+
+    /*
+     * Public Room conversion remains part of the Premium-only
+     * AI Planner feature.
+     */
+    await requirePremiumMembership(
+      travelerId
+    );
+
+
+    /*
+     * Ownership protection.
+     */
+    const aiTravelPlan =
+      await AiTravelPlan.findOne({
+        _id:
+          planId,
+
+        travelerId,
+      });
+
+
+    if (!aiTravelPlan) {
+      throw createHttpError(
+        'AI travel plan not found.',
+        404
+      );
+    }
+
+
+    const result =
+      await convertAiPlanToPublicRoom({
+        aiTravelPlan,
+
+        travelerId,
+
+        roomData:
+          req.body || {},
+      });
+
+
+    return res
+      .status(
+        result
+          .wasAlreadyConverted
+          ? 200
+          : 201
+      )
+      .json({
+        success:
+          true,
+
+        message:
+          result
+            .wasAlreadyConverted
+            ? 'This AI travel plan was already converted into a Public Room.'
+            : 'AI travel plan converted into a Public Room successfully.',
+
+        data:
+          result,
+      });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 
 export {
+  createPublicRoomFromTravelPlan,
   generateTravelPlan,
   getTravelPlanById,
+  saveTravelPlanAsTrip,
 };
