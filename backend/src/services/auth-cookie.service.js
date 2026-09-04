@@ -103,7 +103,7 @@ function getAuthCookieOptions() {
 
     // "lax" provides useful protection against many cross-site requests while
     // still supporting ordinary navigation and our localhost development flow.
-    sameSite: 'lax',
+    sameSite: isProduction ? 'none' : 'lax',
 
     // Express expects maxAge in milliseconds.
     maxAge: convertDurationToMilliseconds(jwtExpiry),
