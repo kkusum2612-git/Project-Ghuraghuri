@@ -63,6 +63,9 @@ function TripWorkspace() {
     setIsPremium,
   ] = useState(false);
 
+  // Controls the traveler navigation drawer on smaller screens.
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
 
   /*
    * ----------------------------------------------------------
@@ -490,13 +493,98 @@ function TripWorkspace() {
           : null
       }
 
+      {/* Mobile/tablet navigation button. Desktop keeps the normal sidebar. */}
+      <div className="border-b border-[#E1E8E4] bg-white px-5 py-3 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="inline-flex items-center gap-2 rounded-lg border border-[#DCE5E0] px-4 py-2 text-sm font-semibold text-[#17211D] transition hover:bg-[#F3F7F5]"
+        >
+          <span aria-hidden="true">☰</span>
+          Menu
+        </button>
+      </div>
+
+      {isMobileMenuOpen && (
+  <div className="fixed inset-0 z-50 lg:hidden">
+    {/* Dark area closes the menu when tapped. */}
+    <button
+      type="button"
+      aria-label="Close navigation menu"
+      onClick={() => setIsMobileMenuOpen(false)}
+      className="absolute inset-0 bg-black/30"
+    />
+
+    <aside className="relative h-full w-72 max-w-[85vw] overflow-y-auto bg-white shadow-xl">
+      <div className="flex items-center justify-between border-b border-[#E1E8E4] px-5 py-4">
+        <div>
+          <p className="font-bold text-[#17211D]">
+            {user?.name || 'Traveler'}
+          </p>
+          <p className="text-xs text-[#66756D]">
+            Traveler
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsMobileMenuOpen(false)}
+          className="rounded-lg px-3 py-2 text-xl text-[#66756D] hover:bg-[#F3F7F5]"
+          aria-label="Close menu"
+        >
+          ×
+        </button>
+      </div>
+
+      <nav className="space-y-2 p-4">
+        {menuItems.map((item) => {
+          const lockedAiPlanner =
+            item.premiumOnly && !isPremium;
+
+          if (lockedAiPlanner) {
+            return (
+              <button
+                key={item.to}
+                type="button"
+                onClick={() => {
+                  handleLockedAiPlannerClick();
+                  setIsMobileMenuOpen(false);
+                }}
+                className="block w-full rounded-lg bg-[#F3F5F4] px-4 py-3 text-left text-sm text-[#8A9690]"
+              >
+                🔒 {item.label}
+              </button>
+            );
+          }
+
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={[
+                'block rounded-lg px-4 py-3 text-sm transition',
+                isActive(item)
+                  ? 'bg-[#DCEFE4] font-semibold text-[#0F6B4D]'
+                  : 'text-[#17211D] hover:bg-[#EEF7F2]',
+              ].join(' ')}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+    </aside>
+  </div>
+)}
+
 
       <div className="flex w-full">
         {/* Shared traveler sidebar.
 
             It remains hidden on smaller screens just like the
             existing Farhan/Kusum/Rafi implementation. */}
-        <aside className="hidden min-h-[calc(100vh-72px)] w-64 shrink-0 border-r border-[#E1E8E4] bg-white lg:block">
+        <aside className="hidden min-h-[calc(100vh-72px)] w-60 shrink-0 border-r border-[#E1E8E4] bg-white lg:block">
           <div className="border-b border-[#E1E8E4] px-5 py-5">
             <div className="flex items-center gap-3">
               {/* If the user has no profile picture here,
