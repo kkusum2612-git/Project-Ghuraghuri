@@ -17,6 +17,19 @@ const ROLE_LABELS = {
   admin: 'Admin',
 };
 
+const ROLE_HOME_ROUTES = {
+  traveler: '/trips',
+  hotel: '/hotel/dashboard',
+  guide: '/guide/dashboard',
+  admin: '/admin',
+};
+
+const ROLE_HOME_LABELS = {
+  traveler: 'Dashboard',
+  hotel: 'Hotel Dashboard',
+  guide: 'Guide Dashboard',
+  admin: 'Admin Dashboard',
+};
 /**
  * Displays the shared navigation bar for the application.
  *
@@ -86,7 +99,7 @@ function Navbar() {
         {/* The project name always returns the user to the public homepage. */}
         <Link
           to="/"
-          className="text-xl font-bold text-emerald-700"
+          className="text-xl font-bold tracking-tight text-[#0F6B4D] transition hover:text-[#0A523B]"
         >
           Ghuraghuri
         </Link>
@@ -102,14 +115,12 @@ function Navbar() {
           </span>
         ) : isAuthenticated ? (
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-            {user.role === 'traveler' && (
-              <Link
-                to="/trips"
-                className="rounded-lg px-3 py-2 text-sm font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2]"
-              >
-                My Trips
-              </Link>
-            )}
+            <Link
+              to={ROLE_HOME_ROUTES[user.role] || '/'}
+              className="rounded-lg px-3 py-2 text-sm font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2]"
+            >
+              {ROLE_HOME_LABELS[user.role] || 'Dashboard'}
+            </Link>
             {/* Display the latest user information stored by AuthProvider. */}
             <div className="text-right">
               <p className="max-w-40 truncate text-sm font-semibold text-slate-800 sm:max-w-56">
