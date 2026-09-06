@@ -68,6 +68,24 @@ function TripCard({
     trip.accessType ===
     'collaborator';
 
+  const today =
+    new Date();
+
+  today.setUTCHours(
+    0,
+    0,
+    0,
+    0
+  );
+
+  const tripEndDate =
+    new Date(
+      trip.endDate
+    );
+
+  const isCompleted =
+    tripEndDate < today;
+
   function handleOpen() {
     onOpen(trip);
   }
@@ -156,6 +174,18 @@ function TripCard({
               Shared
             </span>
           )}
+
+          <span
+            className={
+              isCompleted
+                ? 'rounded-full bg-[#EEF1EF] px-2.5 py-1 text-xs font-bold text-[#66756D]'
+                : 'rounded-full bg-[#E8F3EE] px-2.5 py-1 text-xs font-bold text-[#0F6B4D]'
+            }
+          >
+            {isCompleted
+              ? 'Completed'
+              : 'Upcoming'}
+          </span>
         </div>
 
         <div className="mt-3 space-y-1.5 text-sm text-[#66756D]">

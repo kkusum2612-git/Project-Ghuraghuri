@@ -47,6 +47,22 @@ function TripDashboardPage() {
     setTrips,
   ] = useState([]);
 
+
+  const [
+    searchTerm,
+    setSearchTerm,
+  ] = useState('');
+
+  const [
+    accessFilter,
+    setAccessFilter,
+  ] = useState('all');
+
+  const [
+    statusFilter,
+    setStatusFilter,
+  ] = useState('all');
+
   const [
     isLoading,
     setIsLoading,
@@ -241,6 +257,72 @@ function TripDashboardPage() {
     }
   }
 
+const displayedTrips =
+  trips.filter((trip) => {
+    const normalizedSearch =
+      searchTerm
+        .trim()
+        .toLowerCase();
+
+    const matchesSearch =
+      normalizedSearch === '' ||
+      trip.tripName
+        ?.toLowerCase()
+        .includes(
+          normalizedSearch
+        ) ||
+      trip.destination?.name
+        ?.toLowerCase()
+        .includes(
+          normalizedSearch
+        );
+
+    const matchesAccess =
+      accessFilter === 'all' ||
+      (accessFilter ===
+        'owner' &&
+        trip.accessType ===
+          'owner') ||
+      (accessFilter ===
+        'shared' &&
+        trip.accessType ===
+          'collaborator');
+
+    const today =
+      new Date();
+
+    today.setUTCHours(
+      0,
+      0,
+      0,
+      0
+    );
+
+    const tripEndDate =
+      new Date(
+        trip.endDate
+      );
+
+    const isUpcoming =
+      tripEndDate >= today;
+
+    const matchesStatus =
+      statusFilter === 'all' ||
+      (statusFilter ===
+        'upcoming' &&
+        isUpcoming) ||
+      (statusFilter ===
+        'completed' &&
+        !isUpcoming);
+
+    return (
+      matchesSearch &&
+      matchesAccess &&
+      matchesStatus
+    );
+  });
+
+
   if (isLoading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -296,6 +378,108 @@ function TripDashboardPage() {
         </div>
       )}
 
+      <div className="mt-6 grid gap-4 rounded-xl border border-[#DCE5E0] bg-white p-4 md:grid-cols-3">
+        <div>
+          <label
+            htmlFor="trip-search"
+            className="mb-2 block text-sm font-medium text-[#17211D]"
+          >
+            Search Trips
+          </label>
+
+          <input
+            id="trip-search"
+            type="text"
+            value={searchTerm}
+            onChange={(event) =>
+              setSearchTerm(
+                event.target.value
+              )
+            }
+            placeholder="Search by trip or destination"
+            className="w-full rounded-lg border border-[#DCE5E0] px-3 py-2.5 text-sm text-[#17211D] outline-none transition focus:border-[#0F6B4D]"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="access-filter"
+            className="mb-2 block text-sm font-medium text-[#17211D]"
+          >
+            Access
+          </label>
+
+          <select
+            id="access-filter"
+            value={accessFilter}
+            onChange={(event) =>
+              setAccessFilter(
+                event.target.value
+              )
+            }
+            className="w-full rounded-lg border border-[#DCE5E0] bg-white px-3 py-2.5 text-sm text-[#17211D] outline-none transition focus:border-[#0F6B4D]"
+          >
+            <option value="all">
+              All Trips
+            </option>
+
+            <option value="owner">
+              My Trips
+            </option>
+
+            <option value="shared">
+              Shared With Me
+            </option>
+          </select>
+        </div>
+
+        <div>
+          <label
+            htmlFor="status-filter"
+            className="mb-2 block text-sm font-medium text-[#17211D]"
+          >
+            Status
+          </label>
+
+          <select
+            id="status-filter"
+            value={statusFilter}
+            onChange={(event) =>
+              setStatusFilter(
+                event.target.value
+              )
+            }
+            className="w-full rounded-lg border border-[#DCE5E0] bg-white px-3 py-2.5 text-sm text-[#17211D] outline-none transition focus:border-[#0F6B4D]"
+          >
+            <option value="all">
+              All
+            </option>
+
+            <option value="upcoming">
+              Upcoming
+            </option>
+
+            <option value="completed">
+              Completed
+            </option>
+          </select>
+        </div>
+      </div>
+
+      {trips.length > 0 && (
+        <p className="mt-4 text-sm text-[#66756D]">
+          Showing{' '}
+          <span className="font-semibold text-[#17211D]">
+            {displayedTrips.length}
+          </span>{' '}
+          of{' '}
+          <span className="font-semibold text-[#17211D]">
+            {trips.length}
+          </span>{' '}
+          trips
+        </p>
+      )}
+
       <section className="pt-8">
         {trips.length === 0 ? (
           <TripEmptyState
@@ -303,9 +487,32 @@ function TripDashboardPage() {
               handleCreateTrip
             }
           />
+        ) : displayedTrips.length === 0 ? (
+          <div className="rounded-xl border border-[#DCE5E0] bg-white px-6 py-10 text-center">
+            <h2 className="text-lg font-semibold text-[#17211D]">
+              No trips found
+            </h2>
+
+            <p className="mt-2 text-sm text-[#66756D]">
+              Try changing your search
+              or filters.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm('');
+                setAccessFilter('all');
+                setStatusFilter('all');
+              }}
+              className="mt-4 rounded-lg border border-[#0F6B4D] px-4 py-2 text-sm font-semibold text-[#0F6B4D] transition hover:bg-[#EEF7F2]"
+            >
+              Clear Filters
+            </button>
+          </div>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-            {trips.map(
+            {displayedTrips.map(
               (trip) => (
                 <TripCard
                   key={
